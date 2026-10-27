@@ -274,3 +274,195 @@ button.badge {
   flex: 1 1 auto;
   min-width: 0;
 }
+
+.fineprint {
+  font-size: 0.8125rem;
+}
+
+/* Combobox (autocomplete) */
+.combobox {
+  position: relative;
+}
+
+.combobox__list {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 40;
+  max-height: min(50vh, 380px);
+  margin: 4px 0;
+  padding: 4px;
+  overflow-y: auto;
+  list-style: none;
+  background: var(--panel-raised);
+  border: 1px solid var(--amber);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+}
+
+.combobox--down .combobox__list {
+  top: 100%;
+}
+
+/* "up" keeps the list above the on-screen keyboard / sticky action */
+.combobox--up .combobox__list {
+  bottom: 100%;
+}
+
+.combobox__option {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: var(--tap);
+  padding: 6px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.combobox__option[aria-selected='true'] {
+  background: var(--line);
+}
+
+.combobox__primary {
+  color: var(--amber);
+}
+
+.combobox__secondary,
+.combobox__empty {
+  color: var(--amber-dim);
+  font-size: 0.875rem;
+}
+
+.combobox__empty {
+  padding: 10px;
+}
+
+/* Number stepper */
+.stepper__row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.stepper__input {
+  text-align: center;
+  font-size: 1.25rem;
+  color: var(--amber-bright);
+  text-shadow: var(--glow);
+}
+
+.stepper .btn--icon {
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+/* Route list */
+.stops {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.stop {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  min-width: 0;
+}
+
+.stop--dragging {
+  border-color: var(--amber);
+  background: var(--panel-raised);
+}
+
+.stop--over {
+  border-color: var(--amber-bright);
+  box-shadow: 0 -3px 0 var(--amber);
+}
+
+.stop__index {
+  flex: none;
+  width: 24px;
+  text-align: center;
+  color: var(--amber-dim);
+}
+
+.stop__text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.stop__primary,
+.stop__secondary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stop__secondary {
+  color: var(--amber-dim);
+  font-size: 0.8125rem;
+}
+
+.stop__actions {
+  display: flex;
+  flex: none;
+}
+
+.stop__actions .btn,
+.stop__handle {
+  min-width: 36px;
+  width: 36px;
+  min-height: var(--tap);
+  padding: 0;
+}
+
+.stop__handle {
+  touch-action: none;
+  cursor: grab;
+  background: transparent;
+  border: 0;
+  color: var(--amber-dim);
+  font-size: 1.25rem;
+}
+
+.stop__handle:active {
+  cursor: grabbing;
+}
+
+/* Stop row: text on top, 44 px action buttons below (360 px wide screens). */
+.stop {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  align-items: center;
+  gap: 2px 6px;
+}
+
+.stop__actions {
+  grid-column: 1 / -1;
+  justify-content: flex-end;
+}
+
+.stop__actions .btn,
+.stop__handle {
+  min-width: var(--tap);
+  width: var(--tap);
+}
+
+/* 7 box sizes wrap as 4 + 3 on narrow screens instead of shrinking below 44 px */
+.seg--boxes .seg__btn {
+  flex: 1 0 calc((100% - 12px) / 4);
+}
+
+@media (min-width: 560px) {
+  .seg--boxes .seg__btn {
+    flex: 1 1 0;
+  }
+}
