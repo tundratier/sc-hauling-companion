@@ -16,6 +16,8 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       include: ['src/calc/**', 'src/api/mappers.ts'],
+      exclude: ['src/calc/**/*.test.ts'],
+      thresholds: { lines: 90 },
     },
   },
 })
