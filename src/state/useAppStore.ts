@@ -67,7 +67,7 @@ export const useAppStore = create<AppState>()(
     (set) => ({
       tab: 'ship',
       vehicleId: null,
-      freeScu: 1,
+      freeScu: 32,
       maxBox: 32,
       showConceptShips: false,
       includeIllegal: true,
