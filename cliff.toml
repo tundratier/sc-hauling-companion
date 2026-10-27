@@ -3,7 +3,8 @@
 
 [changelog]
 header = """
-# Changelog\n
+# Changelog
+
 """
 body = """
 {% if version -%}
@@ -27,12 +28,12 @@ filter_unconventional = true
 split_commits = false
 protect_breaking_commits = false
 filter_commits = false
-tag_pattern = "[0-9]+\.[0-9]+\.[0-9]+"
+tag_pattern = '[0-9]+[.][0-9]+[.][0-9]+'
 sort_commits = "oldest"
 commit_parsers = [
   # Merge commits created by git flow are exempt from the format.
   { message = "^Merge ", skip = true },
-  { message = "^chore\(release\)", skip = true },
+  { message = '^chore[(]release[)]', skip = true },
   { message = "^feat", group = "<!-- 0 -->Features" },
   { message = "^fix", group = "<!-- 1 -->Bug Fixes" },
   { message = "^perf", group = "<!-- 2 -->Performance" },
