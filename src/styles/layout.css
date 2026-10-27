@@ -140,3 +140,21 @@
   margin: 0 auto;
   pointer-events: auto;
 }
+
+/* Narrow screens: title + refresh on the first row, data status pill below. */
+@media (max-width: 479px) {
+  .app-header {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+
+  .app-header .pill {
+    order: 3;
+    flex: 1 1 100%;
+    justify-content: center;
+  }
+
+  .app-header .btn--icon {
+    order: 2;
+  }
+}
