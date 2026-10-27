@@ -1,0 +1,15 @@
+{
+  "status": "ok",
+  "http_code": 200,
+  "message": "",
+  "data": [
+    { "id": 100, "name": "Cutlass Black", "name_full": "Drake Cutlass Black", "scu": 46, "container_sizes": "1,2,4,8,16", "is_concept": 0, "is_ground_vehicle": 0, "is_spaceship": 1, "pad_type": "M" },
+    { "id": 101, "name": "Hull C", "name_full": "MISC Hull C", "scu": "4608", "container_sizes": "1,2,4,8,16,24,32", "is_concept": 0, "is_ground_vehicle": 0, "is_spaceship": 1, "pad_type": "XL" },
+    { "id": 102, "name": "Hull D", "name_full": "MISC Hull D", "scu": 20000, "container_sizes": "null", "is_concept": 1, "is_ground_vehicle": 0, "is_spaceship": 1, "pad_type": null },
+    { "id": 103, "name": "Kraken", "name_full": "Drake Kraken", "scu": 12000, "container_sizes": "", "is_concept": 1, "is_ground_vehicle": 0, "is_spaceship": 1, "pad_type": "XL" },
+    { "id": 104, "name": "Galaxy", "name_full": "RSI Galaxy", "scu": 288, "container_sizes": null, "is_concept": 0, "is_ground_vehicle": 0, "is_spaceship": 1, "pad_type": "L" },
+    { "id": 105, "name": "Odd Hauler", "name_full": "Odd Hauler", "scu": 12, "container_sizes": "6,12,2", "is_concept": 0, "is_ground_vehicle": 0, "is_spaceship": 1, "pad_type": "S" },
+    { "id": 106, "name": "Gladius", "name_full": "Aegis Gladius", "scu": 0, "container_sizes": "", "is_concept": 0, "is_ground_vehicle": 0, "is_spaceship": 1, "pad_type": "S" },
+    { "id": 107, "name": "Cutlass Black", "name_full": "Drake Cutlass Black", "scu": 46, "container_sizes": "1,2,4,8,16", "is_concept": 0, "is_ground_vehicle": 0, "is_spaceship": 1, "pad_type": "M" }
+  ]
+}

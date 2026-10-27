@@ -1,0 +1,13 @@
+{
+  "status": "ok",
+  "http_code": 200,
+  "message": "",
+  "data": [
+    { "id_commodity": 1, "id_terminal": 10, "commodity_name": "Agricium", "terminal_name": "Admin - ARC-L1", "price_buy": "2810", "price_sell": 0, "price_buy_avg": 2790.5, "price_sell_avg": 0, "scu_buy": 41, "scu_buy_avg": 54, "scu_sell": 0, "scu_sell_avg": 0, "scu_sell_stock": 0, "status_buy": 3, "status_sell": 0, "container_sizes": "1,2,4,8,16,24,32", "date_modified": 1792000000 },
+    { "id_commodity": 1, "id_terminal": 11, "commodity_name": "Agricium", "terminal_name": "TDD Area 18", "price_buy": 0, "price_sell": 3315, "price_buy_avg": 0, "price_sell_avg": 3300, "scu_buy": 0, "scu_buy_avg": 0, "scu_sell": 14, "scu_sell_avg": 14, "scu_sell_stock": 2, "status_buy": 0, "status_sell": 1, "container_sizes": "1,2,4,8,16,24,32", "date_modified": 1792000100 },
+    { "id_commodity": 4, "id_terminal": 15, "commodity_name": "WiDoW", "terminal_name": "Admin - Grim HEX", "price_buy": 1200, "price_sell": 0, "price_buy_avg": 1200, "price_sell_avg": 0, "scu_buy": 0, "scu_buy_avg": 0, "scu_sell": 0, "scu_sell_avg": 0, "scu_sell_stock": 0, "status_buy": 1, "status_sell": 0, "container_sizes": "", "date_modified": 1792000200 },
+    { "id_commodity": 2, "id_terminal": 10, "commodity_name": "Laranite", "terminal_name": "Admin - ARC-L1", "price_buy": 0, "price_sell": 0, "container_sizes": "1,2" },
+    { "id_terminal": 10, "price_buy": 5 },
+    "garbage"
+  ]
+}
