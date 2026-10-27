@@ -33,3 +33,17 @@ export function formatClock(ms: number): string {
   const d = new Date(ms)
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
+
+/** Spelled-out age for explanations: "12 min", "9 h", "3 d". */
+export function formatAgeLong(ms: number): string {
+  const minutes = Math.floor(Math.max(0, ms) / 60_000)
+  if (minutes < 1) return 'just now'
+  if (minutes < 60) return `${minutes} min`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 48) return `${hours} h`
+  return `${Math.floor(hours / 24)} d`
+}
+
+/** "2×16 · 1×8 · 1×4" */
+export const formatBoxes = (boxes: { size: number; count: number }[]): string =>
+  boxes.map((b) => `${b.count}×${b.size}`).join(' · ')

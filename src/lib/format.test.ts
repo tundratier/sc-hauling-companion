@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { indexAtY } from './drag'
 import {
+  formatAgeLong,
+  formatBoxes,
   formatAgeDays,
   formatAgeMs,
   formatClock,
@@ -75,5 +77,24 @@ describe('indexAtY', () => {
 
   it('returns -1 for no rows', () => {
     expect(indexAtY([], 10)).toBe(-1)
+  })
+})
+
+describe('formatAgeLong / formatBoxes', () => {
+  it('spells out ages', () => {
+    expect(formatAgeLong(10_000)).toBe('just now')
+    expect(formatAgeLong(12 * 60_000)).toBe('12 min')
+    expect(formatAgeLong(9 * 3_600_000)).toBe('9 h')
+    expect(formatAgeLong(60 * 3_600_000)).toBe('2 d')
+  })
+
+  it('formats box breakdowns', () => {
+    expect(
+      formatBoxes([
+        { size: 16, count: 2 },
+        { size: 8, count: 1 },
+      ]),
+    ).toBe('2×16 · 1×8')
+    expect(formatBoxes([])).toBe('')
   })
 })
