@@ -222,7 +222,10 @@
 
 button.badge {
   cursor: pointer;
-  min-height: 28px;
+  min-height: var(--tap);
+  min-width: var(--tap);
+  padding: 0 12px;
+  justify-content: center;
 }
 
 /* Pills, banners, key/value rows */
@@ -235,7 +238,7 @@ button.badge {
   font-family: var(--font-mono);
   font-size: 0.75rem;
   letter-spacing: 0.08em;
-  text-transform: uppercase;
+  text-transform: none; /* text is already upper-case; keeps "12m" lower-case */
   white-space: nowrap;
 }
 
