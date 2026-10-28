@@ -138,15 +138,15 @@ describe('generateCandidates', () => {
         terminals: [terminal(1), terminal(2, { maxContainerSize: 8 })],
         offers: [
           buyOffer(1, 1, 100, { containerSizes: [1, 2, 4, 8, 16, 32] }),
-          sellOffer(1, 2, 150),
+          sellOffer(1, 2, 150, { containerSizes: [1, 2, 4, 8] }),
         ],
       }
       const [h] = gen(spec, { stops: [1, 2], shipBoxSizes: [2, 4, 8, 16] }).hauls
-      expect(h.boxSizes).toEqual([2, 4, 8]) // 1 and 32 not on ship, 16 > sell terminal max
+      expect(h.boxSizes).toEqual([2, 4, 8]) // 1 and 32 not on ship, 16 not accepted at the sell stop
       const [limited] = gen(spec, {
         stops: [1, 2],
         shipBoxSizes: [2, 4, 8, 16],
-        maxBoxOverride: 4,
+        boxRange: { min: 1, max: 4 },
       }).hauls
       expect(limited.boxSizes).toEqual([2, 4])
     })
@@ -155,14 +155,14 @@ describe('generateCandidates', () => {
       const offers = [buyOffer(1, 1, 100, { containerSizes: [8, 16] }), sellOffer(1, 2, 150)]
       const result = gen({ ...base, offers }, { stops: [1, 2], shipBoxSizes: [1, 2, 4] })
       expect(result.hauls).toEqual([])
-      expect(result.dropped.boxSize).toBe(1)
+      expect(result.dropped.boxTooLarge).toBe(1)
     })
 
     it('drops hauls when free space is smaller than the smallest box', () => {
       const offers = [buyOffer(1, 1, 100, { containerSizes: [8, 16] }), sellOffer(1, 2, 150)]
       const result = gen({ ...base, offers }, { stops: [1, 2], freeScu: 7 })
       expect(result.hauls).toEqual([])
-      expect(result.dropped.boxSize).toBe(1)
+      expect(result.dropped.boxTooLarge).toBe(1)
     })
 
     it('caps qtyMax at what box granularity allows', () => {
@@ -205,7 +205,11 @@ describe('generateCandidates', () => {
       expect(
         gen(base, { stops: [1, 2], shipBoxSizes: [] }).hauls[0].flags.shipBoxSizesUnknown,
       ).toBe(true)
-      const [capped] = gen(base, { stops: [1, 2], shipBoxSizes: null, maxBoxOverride: 8 }).hauls
+      const [capped] = gen(base, {
+        stops: [1, 2],
+        shipBoxSizes: null,
+        boxRange: { min: 1, max: 8 },
+      }).hauls
       expect(capped.boxSizes).toEqual([1, 2, 4, 8])
     })
 
@@ -348,7 +352,13 @@ describe('calculate', () => {
     const result = calculate(makeInput({ stops: [1, 2, 3], freeScu: 46 }), makeData(base), NOW)
     expect(result.hauls).toHaveLength(2)
     expect(result.plans.length).toBeGreaterThan(0)
-    expect(result.dropped).toEqual({ boxSize: 0, illegal: 0, volatileQt: 0, priceAge: 0 })
+    expect(result.dropped).toEqual({
+      boxTooLarge: 0,
+      boxTooSmall: 0,
+      illegal: 0,
+      volatileQt: 0,
+      priceAge: 0,
+    })
   })
 
   it('defaults "now" to the current time', () => {

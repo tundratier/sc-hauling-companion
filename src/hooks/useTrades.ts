@@ -24,7 +24,8 @@ export function useTrades(): Trades {
   const stops = useAppStore((s) => s.stops)
   const freeScu = useAppStore((s) => s.freeScu)
   const vehicleId = useAppStore((s) => s.vehicleId)
-  const maxBox = useAppStore((s) => s.maxBox)
+  const boxMin = useAppStore((s) => s.boxMin)
+  const boxMax = useAppStore((s) => s.boxMax)
   const includeIllegal = useAppStore((s) => s.includeIllegal)
   const includeVolatileQt = useAppStore((s) => s.includeVolatileQt)
   const maxPriceAgeDays = useAppStore((s) => s.maxPriceAgeDays)
@@ -42,10 +43,10 @@ export function useTrades(): Trades {
       stops,
       freeScu: Math.min(freeScu, vehicle?.scu ?? Number.MAX_SAFE_INTEGER),
       shipBoxSizes: vehicle?.containerSizes ?? null,
-      maxBoxOverride: maxBox,
+      boxRange: { min: boxMin, max: boxMax },
       options: { includeIllegal, includeVolatileQt, maxPriceAgeDays },
     }),
-    [stops, freeScu, vehicle, maxBox, includeIllegal, includeVolatileQt, maxPriceAgeDays],
+    [stops, freeScu, vehicle, boxMin, boxMax, includeIllegal, includeVolatileQt, maxPriceAgeDays],
   )
 
   const indexes = useMemo(() => {

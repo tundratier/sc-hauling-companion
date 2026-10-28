@@ -3,11 +3,11 @@ import { PRICES_REFRESH_COOLDOWN_MS, refreshCooldownRemainingMs } from '../api/d
 import { Combobox } from '../components/Combobox'
 import { DataGate } from '../components/DataGate'
 import { NumberStepper } from '../components/NumberStepper'
-import { Segmented } from '../components/Segmented'
+import { BoxRangeSlider } from '../components/BoxRangeSlider'
 import { useNow } from '../hooks/useNow'
 import { searchVehicles } from '../domain/search'
-import { STD_BOX_SIZES, type Vehicle } from '../domain/types'
-import { formatAgeMs, formatClock, formatInt } from '../lib/format'
+import type { Vehicle } from '../domain/types'
+import { boxRangeText, formatAgeMs, formatClock, formatInt } from '../lib/format'
 import { MAX_FREE_SCU_NO_SHIP, useAppStore } from '../state/useAppStore'
 import { useDataStore } from '../state/useDataStore'
 
@@ -95,18 +95,18 @@ function ShipForm() {
         </div>
       </section>
 
-      <section className="panel stack" aria-label="Maximum box size">
-        <span className="label">Max box size (SCU)</span>
-        <Segmented
-          label="Max box size"
-          options={[...STD_BOX_SIZES]}
-          value={app.maxBox}
-          onChange={app.setMaxBox}
+      <section className="panel stack" aria-label="Box sizes">
+        <span className="label">
+          Boxes <span className="num">{boxRangeText(app.boxMin, app.boxMax)}</span> SCU
+        </span>
+        <BoxRangeSlider
+          min={app.boxMin}
+          max={app.boxMax}
+          accepted={vehicle?.containerSizes ?? null}
+          onChange={app.setBoxRange}
         />
         {vehicle && !vehicle.containerSizes && (
-          <p className="warn">
-            Box sizes for this ship unknown — choose the largest box that fits.
-          </p>
+          <p className="warn">Box sizes for this ship unknown — set the largest box that fits.</p>
         )}
       </section>
 

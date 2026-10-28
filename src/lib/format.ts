@@ -47,3 +47,7 @@ export function formatAgeLong(ms: number): string {
 /** "2×16 · 1×8 · 1×4" */
 export const formatBoxes = (boxes: { size: number; count: number }[]): string =>
   boxes.map((b) => `${b.count}×${b.size}`).join(' · ')
+
+/** Box size range as text: "4–16" (a single size when min = max). */
+export const boxRangeText = (min: number, max: number): string =>
+  min === max ? String(min) : `${min}–${max}`

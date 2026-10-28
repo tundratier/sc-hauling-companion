@@ -5,7 +5,7 @@ import { DataGate } from '../components/DataGate'
 import { HaulCard, shortName } from '../components/HaulCard'
 import { PlanView } from '../components/PlanView'
 import { useTrades } from '../hooks/useTrades'
-import { formatAgeMs, formatClock, formatInt } from '../lib/format'
+import { boxRangeText, formatAgeMs, formatClock, formatInt } from '../lib/format'
 import { useAppStore } from '../state/useAppStore'
 import { useDataStore } from '../state/useDataStore'
 
@@ -21,9 +21,13 @@ const SORTS: { key: HaulSortKey; label: string }[] = [
 /** Why trades are missing: counted by reason (box size, illegal, volatile, price age). */
 export function droppedLines(d: DroppedCounts): string[] {
   const lines: string[] = []
-  if (d.boxSize > 0)
+  if (d.boxTooLarge > 0)
     lines.push(
-      `${d.boxSize} trade${d.boxSize === 1 ? '' : 's'} need bigger boxes than your ship takes`,
+      `${d.boxTooLarge} trade${d.boxTooLarge === 1 ? '' : 's'} need bigger boxes than your ship takes`,
+    )
+  if (d.boxTooSmall > 0)
+    lines.push(
+      `${d.boxTooSmall} trade${d.boxTooSmall === 1 ? ' only comes' : 's only come'} in boxes smaller than your minimum`,
     )
   if (d.illegal > 0) lines.push(`${d.illegal} hidden by the illegal-commodities filter`)
   if (d.volatileQt > 0) lines.push(`${d.volatileQt} hidden by the quantum-volatile filter`)
@@ -65,7 +69,8 @@ function TradesContent() {
       <p className="trades__route">{routeText || 'No route yet'}</p>
       <p className="num muted">
         Free cargo {formatInt(input.freeScu)} SCU ·{' '}
-        {vehicle ? vehicle.nameFull : 'no ship selected'}
+        {vehicle ? vehicle.nameFull : 'no ship selected'} · boxes{' '}
+        {boxRangeText(input.boxRange.min, input.boxRange.max)} SCU
       </p>
       {prices && (
         <p className="num muted" aria-live="polite">

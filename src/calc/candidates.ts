@@ -1,4 +1,4 @@
-import type { PriceOffer } from '../domain/types'
+import type { PriceOffer, Terminal } from '../domain/types'
 import { STD_BOX_SIZES } from '../domain/types'
 import { decomposeBoxes, maxFillable } from './boxes'
 import type {
@@ -18,6 +18,16 @@ export function ageDays(offer: PriceOffer, nowSec: number): number | null {
 }
 
 const intersect = (a: readonly number[], b: readonly number[]) => a.filter((s) => b.includes(s))
+
+/** Sizes a terminal handles for one commodity: the row's sizes, else up to the terminal max. */
+function terminalSizes(
+  rowSizes: readonly number[],
+  terminal: Terminal | undefined,
+): readonly number[] {
+  if (rowSizes.length > 0) return rowSizes
+  const max = terminal?.maxContainerSize ?? 0
+  return max > 0 ? STD_BOX_SIZES.filter((s) => s <= max) : STD_BOX_SIZES
+}
 
 export function reportedInventory(buy: PriceOffer, sell: PriceOffer): ReportedInventory {
   return {
@@ -44,13 +54,19 @@ export function generateCandidates(
   nowSec: number,
 ): { hauls: Haul[]; dropped: DroppedCounts } {
   const { stops, options } = input
-  const dropped: DroppedCounts = { boxSize: 0, illegal: 0, volatileQt: 0, priceAge: 0 }
+  const dropped: DroppedCounts = {
+    boxTooLarge: 0,
+    boxTooSmall: 0,
+    illegal: 0,
+    volatileQt: 0,
+    priceAge: 0,
+  }
   const hauls: Haul[] = []
   const cap = Math.floor(input.freeScu)
   if (stops.length < 2 || !(cap >= 1)) return { hauls, dropped }
 
   const shipSizes = input.shipBoxSizes && input.shipBoxSizes.length > 0 ? input.shipBoxSizes : null
-  const maxBox = input.maxBoxOverride ?? (shipSizes ? Math.max(...shipSizes) : 32)
+  const { min: minBox, max: maxBox } = input.boxRange
   const ship = shipSizes ?? STD_BOX_SIZES
 
   for (let i = 0; i < stops.length - 1; i++) {
@@ -90,23 +106,24 @@ export function generateCandidates(
           continue
         }
 
-        // allowed box sizes B
-        let rowSizes: readonly number[] = buy.containerSizes
-        let boxSizesUnknown = false
-        if (rowSizes.length === 0) {
-          boxSizesUnknown = true
-          const max = buyTerminal?.maxContainerSize ?? 0
-          rowSizes = max > 0 ? STD_BOX_SIZES.filter((s) => s <= max) : STD_BOX_SIZES
-        }
-        const sellMax = data.terminalById.get(stops[j])?.maxContainerSize ?? 0
-        const boxSizes = intersect(intersect(STD_BOX_SIZES, rowSizes), ship).filter(
-          (s) => s <= maxBox && (sellMax <= 0 || s <= sellMax),
-        )
+        // allowed box sizes B = STD ∩ buySizes ∩ sellSizes ∩ shipSizes ∩ [min, max]
+        const buySizes = terminalSizes(buy.containerSizes, buyTerminal)
+        const sellSizes = terminalSizes(sell.containerSizes, data.terminalById.get(stops[j]))
+        const boxSizesUnknown = buy.containerSizes.length === 0 || sell.containerSizes.length === 0
+        const usable = intersect(intersect(intersect(STD_BOX_SIZES, buySizes), sellSizes), ship)
+        const boxSizes = usable.filter((s) => s >= minBox && s <= maxBox)
         const qtyMax = maxFillable(cap, boxSizes)
         if (qtyMax === 0) {
-          dropped.boxSize++
+          // Only sizes below the range minimum are on offer → "too small"; anything else
+          // (nothing usable, above the maximum, or free space below the smallest box) → "too large".
+          if (boxSizes.length === 0 && usable.length > 0 && Math.max(...usable) < minBox) {
+            dropped.boxTooSmall++
+          } else {
+            dropped.boxTooLarge++
+          }
           continue
         }
+        const boxes = decomposeBoxes(qtyMax, boxSizes)
 
         const investment = buy.priceBuy * qtyMax
         const revenue = sell.priceSell * qtyMax
@@ -136,7 +153,9 @@ export function generateCandidates(
           margin,
           boxSizes,
           qtyMax,
-          boxes: decomposeBoxes(qtyMax, boxSizes),
+          unusedScu: cap - qtyMax,
+          boxes,
+          boxCount: boxes.reduce((n, b) => n + b.count, 0),
           investment,
           revenue,
           profit,

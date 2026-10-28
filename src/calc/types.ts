@@ -4,6 +4,11 @@ import type { BoxCount } from './boxes'
 
 export type { BoxCount }
 
+export interface BoxRange {
+  min: number
+  max: number
+}
+
 export interface CalcOptions {
   /** Default true — illegal hauls are badged. */
   includeIllegal: boolean
@@ -26,8 +31,8 @@ export interface CalcInput {
   freeScu: number
   /** Box sizes the ship takes; null = unknown. */
   shipBoxSizes: number[] | null
-  /** User-chosen max box size (1..32) or null. */
-  maxBoxOverride: number | null
+  /** User-chosen box size range (values from the standard sizes), min ≤ max. */
+  boxRange: BoxRange
   options: CalcOptions
 }
 
@@ -93,7 +98,11 @@ export interface Haul {
   boxSizes: number[]
   /** Largest fillable quantity ≤ free SCU. */
   qtyMax: number
+  /** Free SCU that cannot be filled with the allowed boxes (cap − qtyMax). */
+  unusedScu: number
   boxes: BoxCount[]
+  /** Total number of boxes in the breakdown. */
+  boxCount: number
   investment: number
   revenue: number
   profit: number
@@ -146,8 +155,10 @@ export interface Plan {
 }
 
 export interface DroppedCounts {
-  /** No box size works for this ship / terminals / free space. */
-  boxSize: number
+  /** Every size the terminals offer is above the range max or not accepted by the ship. */
+  boxTooLarge: number
+  /** The only sizes on offer are below the range min. */
+  boxTooSmall: number
   illegal: number
   volatileQt: number
   priceAge: number
@@ -164,5 +175,5 @@ export interface CalcResult {
 export const EMPTY_RESULT: CalcResult = {
   hauls: [],
   plans: [],
-  dropped: { boxSize: 0, illegal: 0, volatileQt: 0, priceAge: 0 },
+  dropped: { boxTooLarge: 0, boxTooSmall: 0, illegal: 0, volatileQt: 0, priceAge: 0 },
 }

@@ -734,3 +734,123 @@ button.badge {
     grid-column: 1 / -1;
   }
 }
+
+/* Dual-handle box size range slider: two overlaid native range inputs. */
+.range {
+  position: relative;
+  height: 76px;
+  margin: 0 -4px;
+  touch-action: pan-y; /* horizontal drags move the handles, vertical ones still scroll */
+  cursor: pointer;
+  user-select: none;
+}
+
+.range__track {
+  position: absolute;
+  left: 22px;
+  right: 22px;
+  top: 20px;
+  height: 4px;
+  background: var(--line);
+  border-radius: 2px;
+}
+
+.range__fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: var(--amber);
+  border-radius: 2px;
+}
+
+.range__input {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  top: 0;
+  height: var(--tap);
+  margin: 0;
+  background: transparent;
+  appearance: none;
+  pointer-events: none; /* visual + keyboard only; the container handles pointers */
+}
+
+.range__input::-webkit-slider-runnable-track {
+  background: transparent;
+  height: var(--tap);
+}
+
+.range__input::-moz-range-track {
+  background: transparent;
+  height: var(--tap);
+}
+
+/* 44 px hit area with a smaller visible knob */
+.range__input::-webkit-slider-thumb {
+  appearance: none;
+  width: var(--tap);
+  height: var(--tap);
+  border: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--amber) 0 9px, var(--bg) 9px 11px, transparent 11px);
+  cursor: grab;
+}
+
+.range__input::-moz-range-thumb {
+  width: var(--tap);
+  height: var(--tap);
+  border: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--amber) 0 9px, var(--bg) 9px 11px, transparent 11px);
+  cursor: grab;
+}
+
+.range__input:focus-visible {
+  outline: none;
+}
+
+.range__input:focus-visible::-webkit-slider-thumb {
+  background: radial-gradient(
+    circle,
+    var(--amber-bright) 0 9px,
+    var(--bg) 9px 11px,
+    var(--amber) 11px 13px,
+    transparent 13px
+  );
+}
+
+.range__input:focus-visible::-moz-range-thumb {
+  background: radial-gradient(
+    circle,
+    var(--amber-bright) 0 9px,
+    var(--bg) 9px 11px,
+    var(--amber) 11px 13px,
+    transparent 13px
+  );
+}
+
+.range__ticks {
+  position: absolute;
+  left: 22px;
+  right: 22px;
+  top: 48px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.range__tick {
+  position: absolute;
+  transform: translateX(-50%);
+  color: var(--amber-dim);
+  font-size: 0.8125rem;
+}
+
+.range__tick--on {
+  color: var(--amber-bright);
+}
+
+.range__tick--disabled {
+  color: var(--amber-faint);
+  text-decoration: line-through;
+}

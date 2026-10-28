@@ -1,6 +1,13 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { fixtureStatic } from '../test-utils/staticData'
-import { MAX_STOPS, STORAGE_KEY, clampFreeScu, defaultMaxBox, useAppStore } from './useAppStore'
+import {
+  MAX_STOPS,
+  STORAGE_KEY,
+  clampFreeScu,
+  defaultMaxBox,
+  normalizeBoxRange,
+  useAppStore,
+} from './useAppStore'
 
 const { vehicles } = fixtureStatic().data
 const vehicle = (id: number) => vehicles.find((v) => v.id === id)!
@@ -13,12 +20,17 @@ beforeEach(() => {
 describe('ship selection', () => {
   it('sets free SCU to the ship capacity and max box to its largest accepted size', () => {
     useAppStore.getState().selectVehicle(vehicle(100))
-    expect(useAppStore.getState()).toMatchObject({ vehicleId: 100, freeScu: 46, maxBox: 16 })
+    expect(useAppStore.getState()).toMatchObject({
+      vehicleId: 100,
+      freeScu: 46,
+      boxMin: 4,
+      boxMax: 16,
+    })
   })
 
   it('preselects 32 when the ship box sizes are unknown', () => {
     useAppStore.getState().selectVehicle(vehicle(104))
-    expect(useAppStore.getState()).toMatchObject({ freeScu: 288, maxBox: 32 })
+    expect(useAppStore.getState()).toMatchObject({ freeScu: 288, boxMin: 4, boxMax: 32 })
     expect(defaultMaxBox(vehicle(104))).toBe(32)
     expect(defaultMaxBox(null)).toBe(32)
   })
@@ -26,7 +38,7 @@ describe('ship selection', () => {
   it('clears the ship', () => {
     useAppStore.getState().selectVehicle(vehicle(100))
     useAppStore.getState().selectVehicle(null)
-    expect(useAppStore.getState()).toMatchObject({ vehicleId: null, maxBox: 32 })
+    expect(useAppStore.getState()).toMatchObject({ vehicleId: null, boxMin: 4, boxMax: 32 })
   })
 })
 
@@ -47,11 +59,12 @@ describe('free SCU', () => {
 })
 
 describe('box size and filters', () => {
-  it('only accepts standard box sizes', () => {
-    useAppStore.getState().setMaxBox(8)
-    expect(useAppStore.getState().maxBox).toBe(8)
-    useAppStore.getState().setMaxBox(7)
-    expect(useAppStore.getState().maxBox).toBe(32)
+  it('snaps the box range to standard sizes and orders the ends', () => {
+    useAppStore.getState().setBoxRange(4, 16)
+    expect(useAppStore.getState()).toMatchObject({ boxMin: 4, boxMax: 16 })
+    useAppStore.getState().setBoxRange(7, 3)
+    expect(useAppStore.getState()).toMatchObject({ boxMin: 2, boxMax: 8 })
+    expect(normalizeBoxRange(100, 0)).toEqual({ boxMin: 1, boxMax: 32 })
   })
 
   it('has the documented defaults', () => {
@@ -119,7 +132,8 @@ describe('persistence', () => {
       tab: 'route',
       vehicleId: 100,
       freeScu: 46,
-      maxBox: 16,
+      boxMin: 4,
+      boxMax: 16,
       stops: [10],
     })
     expect(Object.values(saved.state).some((v) => typeof v === 'function')).toBe(false)
