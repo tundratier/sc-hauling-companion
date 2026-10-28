@@ -39,8 +39,8 @@ describe('RouteView autocomplete (criterion 3)', () => {
     const options = await screen.findAllByRole('option')
     expect(options).toHaveLength(2)
     expect(options.map((o) => o.textContent)).toEqual([
-      'Area18Admin - Area 18 · Stanton',
-      'Area18TDD - Trade and Development Division - Area 18 · Stanton',
+      'Area18Admin - Area 18 · ArcCorp · Stanton',
+      'Area18TDD - Trade and Development Division - Area 18 · ArcCorp · Stanton',
     ])
   })
 
@@ -119,9 +119,11 @@ describe('RouteView stop list', () => {
     render(<RouteView />)
     const items = within(screen.getByRole('list', { name: 'Route stops' })).getAllByRole('listitem')
     expect(items).toHaveLength(3)
-    expect(items[0]).toHaveTextContent('1ARC-L1 Wide Forest StationAdmin - ARC-L1 · Stanton')
+    expect(items[0]).toHaveTextContent(
+      '1ARC-L1 Wide Forest StationAdmin - ARC-L1 · ArcCorp · Stanton',
+    )
     expect(items[1]).toHaveTextContent(
-      'Area18TDD - Trade and Development Division - Area 18 · Stanton',
+      'Area18TDD - Trade and Development Division - Area 18 · ArcCorp · Stanton',
     )
     expect(screen.getByText('3 / 10 stops')).toBeInTheDocument()
   })

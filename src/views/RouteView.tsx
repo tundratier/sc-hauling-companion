@@ -2,13 +2,11 @@ import { useCallback, useMemo, useRef, useState, type PointerEvent } from 'react
 import { Combobox } from '../components/Combobox'
 import { DataGate } from '../components/DataGate'
 import { searchTerminals } from '../domain/search'
+import { terminalDisplay } from '../domain/terminalDisplay'
 import type { Terminal } from '../domain/types'
 import { indexAtY } from '../lib/drag'
 import { MAX_STOPS, MIN_STOPS, useAppStore } from '../state/useAppStore'
 import { useDataStore } from '../state/useDataStore'
-
-export const terminalSecondary = (t: Terminal) =>
-  [t.name, t.starSystemName].filter(Boolean).join(' · ')
 
 interface StopRowProps {
   index: number
@@ -26,13 +24,14 @@ interface StopRowProps {
 }
 
 function StopRow(p: StopRowProps) {
-  const name = p.terminal?.displayname ?? `Unknown terminal (#${p.terminalId})`
+  const display = p.terminal ? terminalDisplay(p.terminal) : undefined
+  const name = display?.primary ?? `Unknown terminal (#${p.terminalId})`
   return (
     <li className={`stop${p.dragging ? ' stop--dragging' : ''}${p.over ? ' stop--over' : ''}`}>
       <span className="stop__index num">{p.index + 1}</span>
       <div className="stop__text">
         <div className="stop__primary">{name}</div>
-        {p.terminal && <div className="stop__secondary">{terminalSecondary(p.terminal)}</div>}
+        {display?.secondary && <div className="stop__secondary">{display.secondary}</div>}
       </div>
       <div className="stop__actions">
         <button
@@ -156,7 +155,10 @@ function RouteEditor() {
             placeholder="Terminal, station or city, e.g. arc l1"
             search={search}
             getKey={(t) => t.id}
-            renderOption={(t) => ({ primary: t.displayname, secondary: terminalSecondary(t) })}
+            renderOption={(t) => {
+              const { primary, secondary } = terminalDisplay(t)
+              return { primary, secondary }
+            }}
             onSelect={(t) => app.addStop(t.id)}
             clearOnSelect
             placement="up"
