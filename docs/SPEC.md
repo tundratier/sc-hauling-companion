@@ -6,6 +6,11 @@ This document is the single source of truth for implementing v1.0. It is written
 
 ### Revision history
 
+**Revision 6 (2026-10-28)** — the details button returns, now as a bordered, labelled `DETAILS ⌄` button in normal flow at the right of row 1 (§7.5):
+- Badges move to row 2.
+- Details open and close independently of "bought". Revision 5 tied them together, so a bought line couldn't be collapsed without unmarking it.
+- The revision 5 dropdown spacing stays.
+
 **Revision 5 (2026-10-28)** — the details chevron on option lines is removed, because it was unclear and overlapped the profit. Bought lines now show their details automatically, and lines that can't be marked expand on tap (§7.5, §7.6). Dropdown chevrons get proper inner spacing (§7.7).
 
 **Revision 4 (2026-10-28)** — **trip mode** (§7.6):
@@ -495,21 +500,29 @@ These values are a starting point. Tune them in the browser to match the warm-wh
   - Header: stop number + terminal display (§7.4).
   - Body: the buy options for that stop (§6.5) as a compact list. Show the top 5; a "Show N more" button expands the rest.
   - A stop with no options says "Nothing profitable to buy here". The last stop says "Final stop — sell only".
-- **Option line** (collapsed, up to three text rows). **At the current stop, tapping the line toggles it as bought** (§7.6). It is a toggle button (`aria-pressed`), ≥ 44 px tall. There is **no** separate details/chevron button on the line. Contents:
-  - Commodity name, followed directly by its **allowed box sizes** (e.g. `Laranite □ 4·8·16`) and small badges.
-  - `→ #3 TDD Area 18` — sell stop number + short terminal name (`nickname`, falling back to `displayname`), plus a `SKIPS 1` badge when it skips stops.
+- **Option line** (collapsed, up to three text rows). **At the current stop, tapping the line toggles it as bought** (§7.6). It is a toggle button (`aria-pressed`), ≥ 44 px tall. Details have their **own, clearly labelled button** (see Details button). Contents:
+  - Row 1: commodity name, followed directly by its **allowed box sizes** (e.g. `Laranite □ 4·8·16`). The **Details button** is right-aligned on the same row.
+  - Row 2: `→ #3 TDD Area 18` — sell stop number + short terminal name (`nickname`, falling back to `displayname`), followed by **all badges** (`SKIPS 1`, `ILLEGAL`, warnings …).
   - **Buy and sell price per SCU**, always visible without expanding: `BUY 2,810 → SELL 3,315 /SCU`. Labels in `--amber-dim`, values in `--amber`, tabular numerals.
   - **Profit** for the full load (`--amber-bright`, right-aligned) and ROI %.
   - Example layout at 360 px (illustrative values):
 
     ```
-    Laranite □ 4·8·16                    [ILLEGAL]
-    → #3 TDD Area 18  [SKIPS 1]        +22,220 aUEC
+    Laranite □ 4·8·16                  [ DETAILS ⌄ ]
+    → #3 TDD Area 18 [SKIPS 1] [ILLEGAL] +22,220 aUEC
     BUY 2,810 → SELL 3,315 /SCU             18.0 %
     ```
-- **Expanded line** — the details are shown, below the three rows, in these cases:
-  - **Bought lines** at the current stop are expanded automatically: marking a line shows what to load, unmarking collapses it again.
-  - Lines that are **not toggles** (later stops, and departed stops viewed read-only) expand and collapse when the line is tapped (`aria-expanded`).
+- **Details button** — it must clearly look like a button, unlike the bare `v` of revision 4:
+  - **Label:** text `DETAILS` plus a chevron `⌄`; when open, `HIDE ⌃`. Uppercase mono, 12 px, `--amber`.
+  - **Style:** 1 px `--amber-dim` border, 4 px radius, `--panel-raised` background, padding 4 × 10 px, visual height ≈ 28 px. Hover/focus: border `--amber`. Pressed/open: border `--amber` and background slightly lighter.
+  - **Size:** the hit area is ≥ 44 × 44 px, extended with transparent padding or a pseudo-element.
+  - **Layout:** it sits in normal document flow at the right end of row 1 and is never absolutely positioned, so it can't overlap the profit. Below 360 px content width the label may shorten to `⌄` / `⌃`, but the bordered box stays.
+  - **Behaviour:** `aria-expanded` + `aria-controls`. Its tap (`stopPropagation`) **only** opens or closes details and never changes "bought".
+  - Shown on every line at every stop, including departed stops viewed read-only.
+- **Expanded line** — details shown below the three rows while the line's Details button is open:
+  - Open/closed is **independent** of "bought": marking or unmarking a line does not open or close details, and an open line can be closed without unmarking it.
+  - The state is per line, held in UI state only (not persisted); all lines start closed.
+  - On lines that are not toggles (later stops, departed stops viewed read-only), tapping the line body also opens or closes details.
   
   Content:
   - Margin/SCU (buy and sell price are already on the collapsed line).
@@ -520,7 +533,7 @@ These values are a starting point. Tune them in the browser to match the warm-wh
 - **Badges** are small, non-interactive chips: height ≈ 18–20 px, font 11 px uppercase, padding 0 6 px, 1 px outline. They are **not** touch targets.
   - Types: `ILLEGAL` (`--warn` fill), `SKIPS n` (amber outline), `STALE 9d`, `VOLATILE`.
   - Inventory warnings (`--warn` outline, question mark because the data is reported, not live): `NO STOCK?`, `LOW STOCK?`, `NO DEMAND?`, `LOW DEMAND?`.
-  - On narrow lines, show at most 3 badges and a `+n` chip; the expanded line lists all of them.
+  - Badges sit on row 2 after the sell stop. On narrow lines, show at most 3 badges and a `+n` chip; the expanded line lists all of them.
 - Number format: `en-US` grouping (`1,234,567`) with unit `aUEC`; on narrow cards MAY use compact (`1.23M`) with full value in `title`/expand. Percentages 1 decimal.
 - All results recompute synchronously (memoized) on any input change; no "calculate" round-trip to the API.
 
@@ -609,7 +622,8 @@ interface BoughtLine {
 12. Unit-test coverage for `src/calc/**` and `src/api/mappers.ts` ≥ 90 % lines.
 13. Reported inventory never removes, caps or re-ranks a trade: a haul whose buy row has `status_buy = 1` and `scu_buy = 0` still appears with full `qtyMax` and a `NO STOCK?` badge (unit-tested).
 14. Trip mode (§7.6):
-    - Tapping a line at the current stop toggles a green highlight plus ✓ and shows its details; lines have no chevron/details button.
+    - Tapping a line at the current stop toggles a green highlight plus ✓ and nothing else.
+    - Every line has a visibly bordered `DETAILS ⌄` button. It opens and closes details independently of "bought", and never overlaps the profit.
     - Depart sits top-right in the stop header at ≥ 600 px and under the list at < 600 px.
     - Departing collapses the stop and shows each bought line as a sell reminder at its sell stop. Undo restores the previous state.
     - After the last departure, `COMPLETE ROUTE` clears the stops and opens ROUTE.
