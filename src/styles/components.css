@@ -1014,3 +1014,56 @@ select.input {
 select.input:disabled {
   opacity: 0.5;
 }
+
+/* Details button (SPEC §7.5): bordered, labelled, in the grid cell at the right end of row 1.
+   It shares the cell with the line button (never absolutely positioned) and the commodity
+   name reserves room for it, so it cannot overlap the profit. */
+.option__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.option__row > * {
+  grid-area: 1 / 1;
+}
+
+.option__name {
+  padding-right: 96px;
+  /* row 1 is as tall as the DETAILS button, so row 2 (profit) starts below it */
+  min-height: 34px;
+}
+
+.option__details-btn {
+  position: relative;
+  justify-self: end;
+  align-self: start;
+  margin: 8px 10px 0 0;
+  padding: 4px 10px;
+  height: 28px;
+  background: var(--panel-raised);
+  border: 1px solid var(--amber-dim);
+  border-radius: 4px;
+  color: var(--amber);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+/* ≥ 44 × 44 px hit area around the 28 px button */
+.option__details-btn::after {
+  content: '';
+  position: absolute;
+  inset: -8px -6px;
+}
+
+.option__details-btn:hover,
+.option__details-btn:focus-visible,
+.option__details-btn[aria-expanded='true'] {
+  border-color: var(--amber);
+}
+
+.option__details-btn[aria-expanded='true'] {
+  background: var(--line);
+}

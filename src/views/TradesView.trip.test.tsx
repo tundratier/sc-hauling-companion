@@ -260,53 +260,105 @@ describe('price refreshes and persistence', () => {
   })
 })
 
-describe('line details without a chevron (spec rev 5)', () => {
-  it('has no details/chevron button on any line', () => {
+describe('details button (spec rev 6)', () => {
+  const details = (el: HTMLElement) => within(el).getByRole('button', { name: /details for/i })
+
+  it('gives every line a labelled DETAILS ⌄ button, at every stop', () => {
     render(<TradesView />)
     for (const n of [1, 2, 3]) {
       for (const l of lines(n)) {
-        expect(within(l).getAllByRole('button')).toHaveLength(1)
-        expect(l.textContent).not.toMatch(/[⌄⌃]/)
+        const b = details(l)
+        expect(b).toHaveTextContent('DETAILS ⌄')
+        expect(b).toHaveAttribute('aria-expanded', 'false')
+        expect(b).toHaveAttribute('aria-controls')
       }
     }
   })
 
-  it('shows the details of a bought line at the current stop and collapses them when unmarked', async () => {
+  it('marking or unmarking a line never opens or closes its details', async () => {
     const user = userEvent.setup()
     render(<TradesView />)
     const scrap = line(1, 'Scrap', 3)
-    expect(within(scrap).queryByText('Margin / SCU')).not.toBeInTheDocument()
     await user.click(toggle(scrap))
+    expect(scrap).toHaveClass('option--bought')
+    expect(within(scrap).queryByText('Margin / SCU')).not.toBeInTheDocument()
+    expect(details(scrap)).toHaveAttribute('aria-expanded', 'false')
+    await user.click(details(scrap))
+    await user.click(toggle(scrap)) // unmark with the details open
+    expect(scrap).not.toHaveClass('option--bought')
     expect(within(scrap).getByText('Margin / SCU')).toBeInTheDocument()
-    expect(within(scrap).getByText(/boxes$/)).toBeInTheDocument()
+  })
+
+  it('opens the details of a bought line and collapses them again without unmarking it', async () => {
+    const user = userEvent.setup()
+    render(<TradesView />)
+    const scrap = line(1, 'Scrap', 3)
+    await user.click(toggle(scrap))
+    await user.click(details(scrap))
+    expect(details(scrap)).toHaveTextContent('HIDE ⌃')
+    expect(details(scrap)).toHaveAttribute('aria-expanded', 'true')
+    expect(within(scrap).getByText('Margin / SCU')).toBeInTheDocument()
+    await user.click(details(scrap))
+    expect(within(scrap).queryByText('Margin / SCU')).not.toBeInTheDocument()
+    expect(details(scrap)).toHaveTextContent('DETAILS ⌄')
+    expect(scrap).toHaveClass('option--bought')
+    expect(toggle(scrap)).toHaveAttribute('aria-pressed', 'true')
+    expect(useAppStore.getState().trip.bought).toHaveLength(1)
+  })
+
+  it('the details button does not change "bought" and the line tap does not open details', async () => {
+    const user = userEvent.setup()
+    render(<TradesView />)
+    const scrap = line(1, 'Scrap', 3)
+    await user.click(details(scrap))
+    expect(useAppStore.getState().trip.bought).toEqual([])
+    expect(scrap).not.toHaveClass('option--bought')
+    await user.click(details(scrap))
     await user.click(toggle(scrap))
     expect(within(scrap).queryByText('Margin / SCU')).not.toBeInTheDocument()
   })
 
-  it('expands lines at later stops on tap (aria-expanded) and collapses them again', async () => {
+  it('keeps the open state per line, not persisted, all lines closed at the start', async () => {
+    const user = userEvent.setup()
+    const first = render(<TradesView />)
+    await user.click(details(line(1, 'Scrap', 3)))
+    expect(within(line(1, 'Steel')).queryByText('Margin / SCU')).not.toBeInTheDocument()
+    expect(JSON.stringify(useAppStore.getState().trip)).not.toMatch(/open|expanded/i)
+    first.unmount()
+    render(<TradesView />)
+    expect(within(line(1, 'Scrap', 3)).queryByText('Margin / SCU')).not.toBeInTheDocument()
+  })
+
+  it('on lines that are not toggles the line body also opens and closes the details', async () => {
     const user = userEvent.setup()
     render(<TradesView />)
     const waste = line(2, 'Waste')
-    const button = within(waste).getByRole('button')
-    expect(button).toHaveAttribute('aria-expanded', 'false')
-    expect(button).not.toHaveAttribute('aria-pressed')
-    await user.click(button)
-    expect(button).toHaveAttribute('aria-expanded', 'true')
+    const body = within(waste).getAllByRole('button')[0]
+    expect(body).toHaveAttribute('aria-expanded', 'false')
+    expect(body).not.toHaveAttribute('aria-pressed')
+    await user.click(body)
     expect(within(waste).getByText('Margin / SCU')).toBeInTheDocument()
-    expect(useAppStore.getState().trip.bought).toEqual([])
-    await user.click(button)
+    expect(details(waste)).toHaveAttribute('aria-expanded', 'true')
+    await user.click(details(waste))
     expect(within(waste).queryByText('Margin / SCU')).not.toBeInTheDocument()
+    expect(useAppStore.getState().trip.bought).toEqual([])
   })
 
-  it('expands lines of a departed stop on tap, read-only', async () => {
+  it('works on the read-only lines of a departed stop', async () => {
     const user = userEvent.setup()
     render(<TradesView />)
     await user.click(toggle(line(1, 'Scrap', 3)))
     await user.click(within(section(1)).getByRole('button', { name: 'Depart →' }))
     await user.click(within(section(1)).getByRole('button', { name: /ARC-L1 Wide Forest Station/ }))
     const steel = line(1, 'Steel')
-    await user.click(within(steel).getByRole('button'))
+    await user.click(details(steel))
     expect(within(steel).getByText('Margin / SCU')).toBeInTheDocument()
     expect(useAppStore.getState().trip.bought).toHaveLength(1)
+  })
+
+  it('puts all badges on the second row after the sell stop', () => {
+    render(<TradesView />)
+    const waste = line(2, 'Waste')
+    expect(waste.querySelector('.option__sell .badge')).toHaveTextContent('ILLEGAL')
   })
 })

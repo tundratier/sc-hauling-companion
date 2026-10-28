@@ -250,7 +250,7 @@ describe('stop sections (criterion 6)', () => {
     // Bulky: 40 SCU × 50 = 2,000; Handy: 46 SCU × 40 = 1,840
     expect(bulky).toHaveTextContent('Bulky □ 8·16')
     expect(handy).toHaveTextContent('Handy □ 1·2·4·8·16')
-    expect(within(bulky).getByRole('button')).toHaveAttribute('aria-pressed', 'false')
+    expect(within(bulky).getAllByRole('button')[0]).toHaveAttribute('aria-pressed', 'false')
     expect(within(bulky).queryByText('Margin / SCU')).not.toBeInTheDocument()
   })
 
@@ -329,8 +329,8 @@ describe('stop sections (criterion 6)', () => {
     // Beta: ILLEGAL, SKIPS 1, NO STOCK?, LOW DEMAND? → the fourth sits behind a +1 chip
     expect(beta.querySelector('.badge--more')).toHaveTextContent('+1')
     expect(beta.querySelectorAll('.badge--extra')).toHaveLength(1)
-    // the line itself is the only button — badges are plain chips
-    expect(within(beta).getAllByRole('button')).toHaveLength(1)
+    // the line (bought toggle) and its DETAILS button — badges are plain chips
+    expect(within(beta).getAllByRole('button')).toHaveLength(2)
   })
 })
 
@@ -356,8 +356,11 @@ describe('expanded option line', () => {
     expect(line).toHaveTextContent('→ #3 CBD Lorville')
     expect(line).toHaveTextContent('23,230')
     expect(line).toHaveTextContent('18.0%')
-    await user.click(within(line).getByRole('button'))
-    expect(within(line).getByRole('button')).toHaveAttribute('aria-pressed', 'true')
+    await user.click(within(line).getByRole('button', { name: /details for/i }))
+    expect(within(line).getByRole('button', { name: /details for/i })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    )
     expect(line).toHaveTextContent('Margin / SCU505')
     expect(line).toHaveTextContent('Quantity46 of 46 SCU')
     expect(line).toHaveTextContent('□ 1·2·4·8·16 — 2×16 + 1×8 + 1×4 + 1×2 = 5 boxes')
@@ -369,7 +372,7 @@ describe('expanded option line', () => {
     expect(line).toHaveTextContent('buy 9h · sell 2d')
     expect(line).toHaveTextContent('SKIPS 1')
     expect(line).toHaveTextContent('Reported — buy: LO · 54 SCU · sell: HI · 14 SCU · stock 2')
-    await user.click(within(line).getByRole('button'))
+    await user.click(within(line).getByRole('button', { name: /details for/i }))
     expect(within(line).queryByText('Margin / SCU')).not.toBeInTheDocument()
   })
 
@@ -381,7 +384,7 @@ describe('expanded option line', () => {
     })
     const user = userEvent.setup()
     render(<TradesView />)
-    await user.click(within(lines(1)[0]).getByRole('button'))
+    await user.click(within(lines(1)[0]).getByRole('button', { name: /details for/i }))
     expect(lines(1)[0]).toHaveTextContent('Quantity44 of 46 SCU')
     expect(lines(1)[0]).toHaveTextContent('2 SCU unused · min box 4')
     expect(lines(1)[0]).toHaveTextContent('2×16 + 1×8 + 1×4 = 4 boxes')
@@ -404,7 +407,7 @@ describe('expanded option line', () => {
     render(<TradesView />)
     const line = lines(1)[0]
     expect(line).toHaveTextContent('NO STOCK?')
-    await user.click(within(line).getByRole('button'))
+    await user.click(within(line).getByRole('button', { name: /details for/i }))
     const notes = within(line).getAllByRole('note')
     expect(notes[0]).toHaveTextContent(
       'Reported 9 h ago at the buy stop: stock Out of Stock (0–14 %), 0 SCU. Inventory may have refilled since.',
@@ -435,7 +438,7 @@ describe('expanded option line', () => {
     useAppStore.setState({ freeScu: 10 })
     render(<TradesView />)
     expect(profits(1)).toEqual(['1,000'])
-    await user.click(within(lines(1)[0]).getByRole('button'))
+    await user.click(within(lines(1)[0]).getByRole('button', { name: /details for/i }))
     expect(lines(1)[0]).toHaveTextContent('Quantity10 of 10 SCU')
   })
 })
@@ -474,7 +477,7 @@ describe('prices on the collapsed line', () => {
     seed({ offers: laranite })
     const user = userEvent.setup()
     render(<TradesView />)
-    await user.click(within(lines(1)[0]).getByRole('button'))
+    await user.click(within(lines(1)[0]).getByRole('button', { name: /details for/i }))
     expect(lines(1)[0]).not.toHaveTextContent('Buy / SCU')
     expect(lines(1)[0]).not.toHaveTextContent('Sell / SCU')
     expect(lines(1)[0]).toHaveTextContent('Margin / SCU505')

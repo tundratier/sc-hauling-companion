@@ -70,8 +70,8 @@ function LineTag({
 
 /**
  * One buy option: commodity (with its allowed box sizes) → sell stop, prices, profit and ROI.
- * At the current stop tapping the line marks it as bought (and shows its details); elsewhere
- * tapping expands or collapses the details.
+ * At the current stop tapping the line marks it as bought; the DETAILS button opens the
+ * details independently (lines that are not toggles also open on a tap of the line body).
  */
 export function OptionLine({
   haul,
@@ -84,9 +84,8 @@ export function OptionLine({
   onToggle,
 }: OptionLineProps) {
   const [open, setOpen] = useState(false)
-  // Bought lines at the current stop show their details automatically (unmarking collapses
-  // them); lines that are not toggles expand and collapse when tapped.
-  const expanded = onToggle ? bought : open
+  // Details are independent of "bought": per line, UI state only, all lines start closed.
+  const expanded = open
   const detailsId = useId()
   const sellName = shortName(terminalById.get(stops[haul.to]), stops[haul.to])
   const badges = haulBadges(haul)
@@ -135,6 +134,19 @@ export function OptionLine({
           </span>
           <span className="num muted option__roi">{formatPercent(haul.roi)}</span>
         </LineTag>
+        <button
+          type="button"
+          className="option__details-btn"
+          aria-expanded={open}
+          aria-controls={detailsId}
+          aria-label={`${open ? 'Hide details' : 'Details'} for ${haul.commodity.name} to stop ${haul.to + 1}`}
+          onClick={(e) => {
+            e.stopPropagation()
+            setOpen(!open)
+          }}
+        >
+          {open ? 'HIDE ⌃' : 'DETAILS ⌄'}
+        </button>
       </div>
 
       {expanded && (
