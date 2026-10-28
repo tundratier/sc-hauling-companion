@@ -14,6 +14,12 @@ export interface CacheEntry<T> {
 /** In-memory mirror; also the only store when IndexedDB is unavailable (private mode). */
 const memory = new Map<string, CacheEntry<unknown>>()
 
+/** The memory mirror is only ever written with `CacheEntry<T>` for the same key. */
+function getMemory<T>(key: string): CacheEntry<T> | undefined {
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  return memory.get(key) as CacheEntry<T> | undefined
+}
+
 export function resetMemoryCache(): void {
   memory.clear()
 }
@@ -28,7 +34,7 @@ export async function cacheGet<T>(
   } catch {
     // IndexedDB unavailable — fall through to memory.
   }
-  entry ??= memory.get(key) as CacheEntry<T> | undefined
+  entry ??= getMemory<T>(key)
   if (!entry || entry.schemaVersion !== schemaVersion) return null
   return entry
 }

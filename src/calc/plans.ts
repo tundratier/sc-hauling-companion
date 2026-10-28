@@ -69,11 +69,18 @@ export function buildLoads(hauls: Haul[], freeScu: number): Map<string, Load> {
   return loads
 }
 
-const mergeFlags = (a: HaulFlags, b: HaulFlags): HaulFlags => {
-  const out = { ...a }
-  for (const k of Object.keys(b) as (keyof HaulFlags)[]) out[k] = a[k] || b[k]
-  return out
-}
+const mergeFlags = (a: HaulFlags, b: HaulFlags): HaulFlags => ({
+  illegal: a.illegal || b.illegal,
+  volatileTime: a.volatileTime || b.volatileTime,
+  temporary: a.temporary || b.temporary,
+  noStock: a.noStock || b.noStock,
+  lowStock: a.lowStock || b.lowStock,
+  noDemand: a.noDemand || b.noDemand,
+  lowDemand: a.lowDemand || b.lowDemand,
+  boxSizesUnknown: a.boxSizesUnknown || b.boxSizesUnknown,
+  shipBoxSizesUnknown: a.shipBoxSizesUnknown || b.shipBoxSizesUnknown,
+  stale: a.stale || b.stale,
+})
 
 const hasInventoryWarning = (f: HaulFlags) => f.noStock || f.lowStock || f.noDemand || f.lowDemand
 

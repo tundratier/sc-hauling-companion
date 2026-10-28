@@ -84,6 +84,8 @@ function toLoaded<T>(entry: CacheEntry<T>, stale: boolean, error: UexError | nul
 }
 
 function refresh<T>(cfg: DatasetConfig<T>, signal?: AbortSignal): Promise<Loaded<T>> {
+  // one in-flight request per key, and each key always holds the same dataset type
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
   const existing = inflight.get(cfg.key) as Promise<Loaded<T>> | undefined
   if (existing) return existing
   const promise = (async () => {
