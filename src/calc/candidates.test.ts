@@ -334,10 +334,19 @@ describe('compareHauls', () => {
     expect(ids('investment')).toEqual([2, 1])
   })
 
-  it('is deterministic on ties', () => {
-    const a = hauls[0]
-    const b = { ...hauls[0], id: 'z' }
-    expect([b, a].sort(compareHauls('profit'))[0]).toBe(a)
+  it('breaks ties by margin, then commodity name, then id', () => {
+    const [a] = hauls
+    const named = (name: string, over: object) => ({
+      ...a,
+      commodity: { ...a.commodity, name },
+      ...over,
+    })
+    const sameProfitLowerMargin = named('A', { id: '1', margin: a.margin - 1 })
+    const alpha = named('Alpha', { id: '2' })
+    const beta = named('Beta', { id: '3' })
+    const betaTwin = named('Beta', { id: '4' })
+    const sorted = [betaTwin, sameProfitLowerMargin, beta, alpha].sort(compareHauls('profit'))
+    expect(sorted.map((h) => h.id)).toEqual(['2', '3', '4', '1'])
   })
 })
 
@@ -345,13 +354,13 @@ describe('calculate', () => {
   it('returns the empty result for invalid input', () => {
     const data = makeData(base)
     expect(calculate(makeInput({ stops: [1] }), data, NOW).hauls).toEqual([])
-    expect(calculate(makeInput({ stops: [1, 2], freeScu: 0.4 }), data, NOW).plans).toEqual([])
+    expect(calculate(makeInput({ stops: [1, 2], freeScu: 0.4 }), data, NOW).byStop).toEqual([])
   })
 
-  it('returns hauls, plans and dropped counts', () => {
+  it('returns hauls, per-stop buy options and dropped counts', () => {
     const result = calculate(makeInput({ stops: [1, 2, 3], freeScu: 46 }), makeData(base), NOW)
     expect(result.hauls).toHaveLength(2)
-    expect(result.plans.length).toBeGreaterThan(0)
+    expect(result.byStop.map((s) => s.length)).toEqual([2, 0, 0])
     expect(result.dropped).toEqual({
       boxTooLarge: 0,
       boxTooSmall: 0,

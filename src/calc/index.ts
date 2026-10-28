@@ -1,24 +1,16 @@
 import { generateCandidates } from './candidates'
-import { buildPlans } from './plans'
+import { groupByStop } from './stops'
 import { EMPTY_RESULT, type CalcData, type CalcInput, type CalcResult } from './types'
 
 export * from './boxes'
 export { compareHauls, generateCandidates, STALE_AFTER_DAYS, type HaulSortKey } from './candidates'
-export {
-  buildLoad,
-  buildLoads,
-  buildPlans,
-  capitalRequired,
-  makePlan,
-  onBoardPerSegment,
-  TOP_K,
-} from './plans'
-export { buildTimeline, type TimelineAction, type TimelineStop } from './timeline'
+export { groupByStop } from './stops'
 export * from './types'
 
 /**
- * Pure trade calculation: single hauls (result set A) and top plans (result set B) for an
- * ordered list of stops. `nowSec` (unix seconds) only affects price ages / the age filter.
+ * Pure trade calculation: every candidate haul and the buy options grouped per stop
+ * (profit-sorted; re-sort with `groupByStop`). `nowSec` (unix seconds) only affects price
+ * ages and the age filter.
  */
 export function calculate(
   input: CalcInput,
@@ -27,6 +19,5 @@ export function calculate(
 ): CalcResult {
   if (input.stops.length < 2 || !(Math.floor(input.freeScu) >= 1)) return EMPTY_RESULT
   const { hauls, dropped } = generateCandidates(input, data, nowSec)
-  const plans = buildPlans(hauls, input.stops.length, input.freeScu)
-  return { hauls, plans, dropped }
+  return { hauls, byStop: groupByStop(hauls, input.stops.length), dropped }
 }

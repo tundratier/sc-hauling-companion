@@ -175,10 +175,13 @@ export function generateCandidates(
 
 export type HaulSortKey = 'profit' | 'roi' | 'margin' | 'investment'
 
-/** Descending by the chosen key; deterministic tie-breaks (profit, then id). */
+/** Descending by the chosen key; ties: margin (desc), then commodity name, then id. */
 export function compareHauls(key: HaulSortKey) {
   const value = (h: Haul) =>
     key === 'margin' ? h.margin : key === 'investment' ? h.investment : h[key]
   return (a: Haul, b: Haul) =>
-    value(b) - value(a) || b.profit - a.profit || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+    value(b) - value(a) ||
+    b.margin - a.margin ||
+    a.commodity.name.localeCompare(b.commodity.name) ||
+    (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
 }

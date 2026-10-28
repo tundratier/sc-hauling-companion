@@ -185,14 +185,15 @@
 .badge {
   display: inline-flex;
   align-items: center;
-  padding: 1px 6px;
+  height: 18px;
+  padding: 0 6px;
   border: 1px solid var(--amber);
   border-radius: 3px;
   color: var(--amber);
   font-family: var(--font-mono);
-  font-size: 0.75rem;
+  font-size: 11px;
   letter-spacing: 0.08em;
-  line-height: 1.4;
+  line-height: 1;
   text-transform: uppercase;
   white-space: nowrap;
   background: transparent;
@@ -218,14 +219,6 @@
 .badge--dim {
   border-color: var(--amber-dim);
   color: var(--amber-dim);
-}
-
-button.badge {
-  cursor: pointer;
-  min-height: var(--tap);
-  min-width: var(--tap);
-  padding: 0 12px;
-  justify-content: center;
 }
 
 /* Pills, banners, key/value rows */
@@ -491,81 +484,8 @@ button.badge {
   font-size: 0.9375rem;
 }
 
-.chips {
-  display: flex;
-  gap: 8px;
-  overflow-x: auto;
-  padding-bottom: 4px;
-  scrollbar-width: thin;
-}
-
-.chip {
-  flex: none;
-  min-width: var(--tap);
-  min-height: var(--tap);
-  padding: 4px 16px;
-  background: var(--panel-raised);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  color: var(--amber-dim);
-  font-family: var(--font-mono);
-  letter-spacing: 0.08em;
-}
-
-.chip[aria-selected='true'] {
-  background: var(--amber);
-  border-color: var(--amber);
-  color: var(--bg);
-  font-weight: 700;
-}
-
-.kpis {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-
-.kpi {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 8px 10px;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  min-width: 0;
-}
-
-.kpi--primary {
-  grid-column: 1 / -1;
-  border-color: var(--amber-dim);
-}
-
-.kpi__value {
-  font-size: 1.125rem;
-  overflow-wrap: anywhere;
-}
-
-.kpi--primary .kpi__value {
-  font-size: 1.75rem;
-}
-
-.kpi__value small {
-  font-size: 0.8125rem;
-  color: var(--amber-dim);
-  text-shadow: none;
-}
-
-.timeline {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.tl-stop {
+/* One section per stop, in route order */
+.stop-section {
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -576,129 +496,139 @@ button.badge {
   min-width: 0;
 }
 
-.tl-stop--pass {
-  flex-direction: row;
-  flex-wrap: wrap;
+.stop-section__head {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
   align-items: center;
-  gap: 4px 8px;
-  padding: 6px 10px;
-  background: transparent;
-  border-style: dashed;
-  color: var(--amber-dim);
+  gap: 6px;
 }
 
-.tl-stop__name {
+.stop-section__head .stop__primary {
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 600;
+  color: var(--amber-bright);
+}
+
+.stop-section__note {
+  padding: 4px 2px;
+}
+
+.options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.option {
+  background: var(--panel-raised);
+  border: 1px solid var(--line);
+  border-radius: 4px;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+}
+
+.option--open {
+  border-color: var(--amber-dim);
+}
+
+/* The whole collapsed line is the touch target (≥ 44 px). */
+.option__line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: var(--tap);
+  padding: 6px 10px;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  text-align: left;
+}
+
+.option__main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.option__name {
+  overflow-wrap: anywhere;
+}
+
+.option__name strong {
+  font-weight: 600;
+}
+
+.option__boxes {
+  font-size: 0.875rem;
   white-space: nowrap;
 }
 
-.tl-stop__head {
+.option__sell {
+  color: var(--amber-dim);
+  overflow-wrap: anywhere;
+}
+
+.option__money {
   display: flex;
-  align-items: center;
-  gap: 6px;
+  flex: none;
+  flex-direction: column;
+  align-items: flex-end;
+  text-align: right;
 }
 
-.tl-stop__foot {
-  font-size: 0.8125rem;
+.option__profit {
+  font-size: 1.0625rem;
 }
 
-.action {
+.option__details {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 8px;
-  background: var(--panel-raised);
-  border-left: 3px solid var(--amber);
-  border-radius: 4px;
+  gap: 8px;
+  padding: 4px 10px 10px;
+  border-top: 1px solid var(--line);
 }
 
-.action--sell {
-  border-left-color: var(--ok);
-}
-
-.action__main,
-.action__meta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 2px 10px;
-}
-
-.action__meta {
+.option__reported {
   font-size: 0.875rem;
+  overflow-wrap: anywhere;
 }
 
-.action__tag {
-  padding: 0 6px;
-  border: 1px solid var(--amber);
-  border-radius: 3px;
-  font-family: var(--font-mono);
-  font-size: 0.8125rem;
-  letter-spacing: 0.08em;
-}
-
-.action__tag--sell {
-  border-color: var(--ok);
-  color: var(--ok);
-}
-
+/* Badges: small, non-interactive chips (≈ 18 px tall). */
 .badges {
-  display: flex;
+  display: inline-flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   min-width: 0;
 }
 
-.badges:empty {
+.badge--more {
   display: none;
 }
 
+@media (max-width: 599px) {
+  /* narrow lines: at most 3 badges plus a +n chip */
+  .option__line .badge--extra {
+    display: none;
+  }
+
+  .option__line .badge--more {
+    display: inline-flex;
+  }
+}
+
 .warn-note {
-  flex: 1 1 100%;
   padding: 6px 8px;
   border: 1px solid var(--warn);
   border-radius: 4px;
   color: var(--warn);
   font-size: 0.875rem;
-}
-
-.hauls {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 8px;
-}
-
-.haul {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.haul__head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-}
-
-.haul__name {
-  margin: 0;
-  font-size: 1.0625rem;
-  font-weight: 600;
-}
-
-.haul__route {
-  overflow-wrap: anywhere;
-}
-
-.haul__boxes,
-.haul__reported {
-  font-size: 0.875rem;
-  overflow-wrap: anywhere;
 }
 
 .fields {
@@ -722,16 +652,8 @@ button.badge {
 }
 
 @media (min-width: 600px) {
-  .hauls {
-    grid-template-columns: 1fr 1fr;
-  }
-
-  .kpis {
-    grid-template-columns: repeat(4, 1fr);
-  }
-
-  .kpi--primary {
-    grid-column: 1 / -1;
+  .fields {
+    grid-template-columns: repeat(3, 1fr);
   }
 }
 
