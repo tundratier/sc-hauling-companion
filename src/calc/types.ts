@@ -114,46 +114,6 @@ export interface Haul {
   flags: HaulFlags
 }
 
-export interface LoadPart {
-  haul: Haul
-  qty: number
-  boxes: BoxCount[]
-  investment: number
-  revenue: number
-  profit: number
-}
-
-/** What is carried from stop `from` to stop `to`. */
-export interface Load {
-  from: number
-  to: number
-  parts: LoadPart[]
-  scu: number
-  investment: number
-  revenue: number
-  profit: number
-}
-
-export interface Plan {
-  /** Loads in route order, non-overlapping. */
-  loads: Load[]
-  profit: number
-  investment: number
-  revenue: number
-  roi: number
-  /** Maximum SCU on board over all segments. */
-  peakScu: number
-  /** Cash needed up front (sell first, then buy at every stop). */
-  capitalRequired: number
-  /** Number of BUY plus SELL lines. */
-  transactions: number
-  oldestPriceAgeDays: number | null
-  /** Parts with an inventory warning (NO/LOW STOCK?, NO/LOW DEMAND?). */
-  warningCount: number
-  flags: HaulFlags
-  key: string
-}
-
 export interface DroppedCounts {
   /** Every size the terminals offer is above the range max or not accepted by the ship. */
   boxTooLarge: number
@@ -165,15 +125,15 @@ export interface DroppedCounts {
 }
 
 export interface CalcResult {
-  /** Result set A: every candidate at qtyMax, sorted by profit desc. */
+  /** Every candidate at qtyMax, one per (commodity, buy stop, sell stop), sorted by profit. */
   hauls: Haul[]
-  /** Result set B: best plans, first is MAX. */
-  plans: Plan[]
+  /** Buy options per stop (index = buy stop), default sort; the last stop is always empty. */
+  byStop: Haul[][]
   dropped: DroppedCounts
 }
 
 export const EMPTY_RESULT: CalcResult = {
   hauls: [],
-  plans: [],
+  byStop: [],
   dropped: { boxTooLarge: 0, boxTooSmall: 0, illegal: 0, volatileQt: 0, priceAge: 0 },
 }
