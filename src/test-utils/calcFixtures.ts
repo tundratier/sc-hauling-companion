@@ -103,7 +103,7 @@ export const makeInput = (
 ): CalcInput => ({
   freeScu: 100,
   shipBoxSizes: [1, 2, 4, 8, 16, 24, 32],
-  maxBoxOverride: null,
+  boxRange: { min: 1, max: 32 },
   ...over,
   options: { ...DEFAULT_CALC_OPTIONS, ...over.options },
 })
