@@ -536,10 +536,14 @@
 
 /* The whole collapsed line is the touch target (≥ 44 px). */
 .option__line {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'name   name'
+    'sell   profit'
+    'prices roi';
+  align-items: baseline;
+  gap: 2px 8px;
   width: 100%;
   min-height: var(--tap);
   padding: 6px 10px;
@@ -549,11 +553,52 @@
   text-align: left;
 }
 
-.option__main {
+.option__name {
+  grid-area: name;
+}
+
+.option__sell {
+  grid-area: sell;
   display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 6px;
+  color: var(--amber-dim);
+  overflow-wrap: anywhere;
+}
+
+/* BUY 2,810 → SELL 3,315 /SCU: labels dim, values amber, tabular numerals; wraps on narrow lines */
+.option__prices {
+  grid-area: prices;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 6px;
+  color: var(--amber);
+  font-size: 0.8125rem;
+}
+
+.option__price {
+  white-space: nowrap;
+}
+
+.option__label {
+  color: var(--amber-dim);
+}
+
+.option__profit-cell {
+  grid-area: profit;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.option__unit {
+  color: var(--amber-dim);
+  font-size: 0.75rem;
+}
+
+.option__roi {
+  grid-area: roi;
+  text-align: right;
 }
 
 .option__name {
@@ -567,19 +612,6 @@
 .option__boxes {
   font-size: 0.875rem;
   white-space: nowrap;
-}
-
-.option__sell {
-  color: var(--amber-dim);
-  overflow-wrap: anywhere;
-}
-
-.option__money {
-  display: flex;
-  flex: none;
-  flex-direction: column;
-  align-items: flex-end;
-  text-align: right;
 }
 
 .option__profit {

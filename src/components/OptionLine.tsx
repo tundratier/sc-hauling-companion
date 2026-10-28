@@ -51,29 +51,38 @@ export function OptionLine({ haul, terminalById, stops, freeScu, minBox, now }: 
         aria-controls={detailsId}
         onClick={() => setOpen(!open)}
       >
-        <span className="option__main">
-          <span className="option__name">
-            <strong>{haul.commodity.name}</strong>{' '}
-            <span className="num muted option__boxes" title="Allowed box sizes">
-              □ {haul.boxSizes.join('·')}
-            </span>
+        <span className="option__name">
+          <strong>{haul.commodity.name}</strong>{' '}
+          <span className="num muted option__boxes" title="Allowed box sizes">
+            □ {haul.boxSizes.join('·')}
           </span>
-          <span className="option__sell">
+        </span>
+        <span className="option__sell">
+          <span>
             → <span className="num">#{haul.to + 1}</span> {sellName}
           </span>
           <Badges badges={badges} limit={MAX_COLLAPSED_BADGES} />
         </span>
-        <span className="option__money">
-          <span className="num num--primary option__profit">{formatInt(haul.profit)}</span>
-          <span className="num muted">{formatPercent(haul.roi)}</span>
+        <span className="option__prices num">
+          <span className="option__price">
+            <span className="option__label">BUY</span> {formatInt(haul.unitBuy)}
+          </span>{' '}
+          <span className="option__label">→</span>{' '}
+          <span className="option__price">
+            <span className="option__label">SELL</span> {formatInt(haul.unitSell)}{' '}
+            <span className="option__label">/SCU</span>
+          </span>
         </span>
+        <span className="option__profit-cell">
+          <span className="num num--primary option__profit">{formatInt(haul.profit)}</span>
+          <span className="num option__unit"> aUEC</span>
+        </span>
+        <span className="num muted option__roi">{formatPercent(haul.roi)}</span>
       </button>
 
       {open && (
         <div id={detailsId} className="option__details">
           <div className="fields">
-            <Field label="Buy / SCU" value={formatInt(haul.unitBuy)} />
-            <Field label="Sell / SCU" value={formatInt(haul.unitSell)} />
             <Field label="Margin / SCU" value={formatInt(haul.margin)} />
             <Field
               label="Quantity"

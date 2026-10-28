@@ -349,11 +349,14 @@ describe('expanded option line', () => {
     const user = userEvent.setup()
     render(<TradesView />)
     const line = lines(1)[0]
-    expect(within(line).queryByText('Buy / SCU')).not.toBeInTheDocument()
+    expect(within(line).queryByText('Margin / SCU')).not.toBeInTheDocument()
+    // buy and sell price are visible without expanding (criterion 10)
+    expect(line).toHaveTextContent('BUY 2,810 → SELL 3,315 /SCU')
+    expect(line).toHaveTextContent('→ #3 CBD Lorville')
+    expect(line).toHaveTextContent('23,230')
+    expect(line).toHaveTextContent('18.0%')
     await user.click(within(line).getByRole('button'))
     expect(within(line).getByRole('button')).toHaveAttribute('aria-expanded', 'true')
-    expect(line).toHaveTextContent('Buy / SCU2,810')
-    expect(line).toHaveTextContent('Sell / SCU3,315')
     expect(line).toHaveTextContent('Margin / SCU505')
     expect(line).toHaveTextContent('Quantity46 of 46 SCU')
     expect(line).toHaveTextContent('□ 1·2·4·8·16 — 2×16 + 1×8 + 1×4 + 1×2 = 5 boxes')
@@ -366,7 +369,7 @@ describe('expanded option line', () => {
     expect(line).toHaveTextContent('SKIPS 1')
     expect(line).toHaveTextContent('Reported — buy: LO · 54 SCU · sell: HI · 14 SCU · stock 2')
     await user.click(within(line).getByRole('button', { name: /Laranite/ }))
-    expect(within(line).queryByText('Buy / SCU')).not.toBeInTheDocument()
+    expect(within(line).queryByText('Margin / SCU')).not.toBeInTheDocument()
   })
 
   it('shows unused SCU with the minimum box when the range leaves a gap', async () => {
@@ -448,5 +451,31 @@ describe('droppedLines', () => {
       '1 trade only comes in boxes smaller than your minimum',
       '3 hidden by the price-age filter',
     ])
+  })
+})
+
+describe('prices on the collapsed line', () => {
+  it('formats long values with grouping and labels (4- and 7-digit prices)', () => {
+    seed({
+      offers: [buyOffer(1, 1, 1_234_567), sellOffer(1, 2, 2_345_678)],
+      commodities: [commodity(1, { name: 'Extremely Long Commodity Name Compound' })],
+      stops: [1, 2],
+      boxMin: 1,
+    })
+    render(<TradesView />)
+    const line = lines(1)[0]
+    expect(line).toHaveTextContent('BUY 1,234,567 → SELL 2,345,678 /SCU')
+    expect(line).toHaveTextContent('Extremely Long Commodity Name Compound')
+    expect(line.querySelector('.option__unit')).toHaveTextContent('aUEC')
+  })
+
+  it('does not repeat buy and sell price in the expanded details', async () => {
+    seed({ offers: laranite })
+    const user = userEvent.setup()
+    render(<TradesView />)
+    await user.click(within(lines(1)[0]).getByRole('button'))
+    expect(lines(1)[0]).not.toHaveTextContent('Buy / SCU')
+    expect(lines(1)[0]).not.toHaveTextContent('Sell / SCU')
+    expect(lines(1)[0]).toHaveTextContent('Margin / SCU505')
   })
 })
