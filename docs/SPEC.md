@@ -6,6 +6,8 @@ This document is the single source of truth for implementing v1.0. It is written
 
 ### Revision history
 
+**Revision 3 (2026-10-28)** — buy and sell price per SCU are shown on the collapsed option line, not only when expanded (§7.5, §8 criterion 10). The sell stop's short name is the terminal `nickname`, as already implemented.
+
 **Revision 2 (2026-10-28)** — product owner review of the first implementation, merged with the implementer's report:
 
 | Area | Change | Section |
@@ -483,12 +485,20 @@ These values are a starting point. Tune them in the browser to match the warm-wh
   - Header: stop number + terminal display (§7.4).
   - Body: the buy options for that stop (§6.5) as a compact list. Show the top 5; a "Show N more" button expands the rest.
   - A stop with no options says "Nothing profitable to buy here". The last stop says "Final stop — sell only".
-- **Option line** (collapsed, one or two text rows, whole line is the ≥ 44 px touch target):
+- **Option line** (collapsed, up to three text rows, whole line is the ≥ 44 px touch target):
   - Commodity name, followed directly by its **allowed box sizes** (e.g. `Laranite □ 4·8·16`) and small badges.
-  - `→ #3 Area18` — sell stop number + short terminal name, plus a `SKIPS 1` badge when it skips stops.
+  - `→ #3 TDD Area 18` — sell stop number + short terminal name (`nickname`, falling back to `displayname`), plus a `SKIPS 1` badge when it skips stops.
+  - **Buy and sell price per SCU**, always visible without expanding: `BUY 2,810 → SELL 3,315 /SCU`. Labels in `--amber-dim`, values in `--amber`, tabular numerals.
   - **Profit** for the full load (`--amber-bright`, right-aligned) and ROI %.
+  - Example layout at 360 px (illustrative values):
+
+    ```
+    Laranite □ 4·8·16                    [ILLEGAL]
+    → #3 TDD Area 18  [SKIPS 1]        +22,220 aUEC
+    BUY 2,810 → SELL 3,315 /SCU             18.0 %
+    ```
 - **Expanded line** (tap to toggle):
-  - Buy price/SCU, sell price/SCU, margin/SCU.
+  - Margin/SCU (buy and sell price are already on the collapsed line).
   - Quantity (`44 of 46 SCU`, plus "2 SCU unused · min box 4" when applicable) and the box breakdown with count.
   - Investment, revenue, profit, ROI.
   - Price ages for both rows.
@@ -519,7 +529,7 @@ These values are a starting point. Tune them in the browser to match the warm-wh
 7. Hauls whose allowed box set is empty are excluded and counted as `boxTooLarge` or `boxTooSmall`.
 8. Quantities never exceed free SCU and use only box sizes within the selected range that the buy terminal, sell terminal and ship all accept (unit-tested).
 9. Every option line shows the commodity's allowed box sizes next to its name, without expanding.
-10. Every displayed haul shows (collapsed or expanded) buy price, sell price, profit, ROI, legal/illegal, quantity, box sizes and box breakdown, and price age.
+10. Every collapsed option line shows commodity, allowed box sizes, sell stop, buy price/SCU, sell price/SCU, profit, ROI and legal/illegal; the expanded line adds quantity, box breakdown and price ages.
 11. Layout has no horizontal scroll at 360 px width; all interactive touch targets ≥ 44 px; badges ≤ 20 px tall; warm-white amber theme as in §7.1; the CALCULATE TRADES button and tab bar are centered in the content column at 360, 820 and 1440 px width.
 12. Unit-test coverage for `src/calc/**` and `src/api/mappers.ts` ≥ 90 % lines.
 13. Reported inventory never removes, caps or re-ranks a trade: a haul whose buy row has `status_buy = 1` and `scu_buy = 0` still appears with full `qtyMax` and a `NO STOCK?` badge (unit-tested).
