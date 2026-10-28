@@ -72,24 +72,6 @@ describe('marking lines as bought', () => {
     ])
   })
 
-  it('opens the details with the chevron without toggling bought', async () => {
-    const user = userEvent.setup()
-    render(<TradesView />)
-    const scrap = line(1, 'Scrap', 3)
-    await user.click(within(scrap).getByRole('button', { name: /Show details/ }))
-    expect(within(scrap).getByText('Margin / SCU')).toBeInTheDocument()
-    expect(useAppStore.getState().trip.bought).toEqual([])
-    expect(scrap).not.toHaveClass('option--bought')
-  })
-
-  it('lines at later stops are not toggles but keep the details button', () => {
-    render(<TradesView />)
-    const waste = line(2, 'Waste')
-    expect(within(waste).getAllByRole('button')).toHaveLength(1)
-    expect(within(waste).getByRole('button', { name: /details/ })).toBeInTheDocument()
-    expect(waste.querySelector('[aria-pressed]')).toBeNull()
-  })
-
   it('emphasizes the current stop and shows the progress in the summary', () => {
     render(<TradesView />)
     expect(section(1)).toHaveClass('stop-section--current')
@@ -275,5 +257,56 @@ describe('price refreshes and persistence', () => {
     expect(screen.getByRole('note')).toHaveTextContent(
       'Editing the route resets trip progress (at stop 2 of 3)',
     )
+  })
+})
+
+describe('line details without a chevron (spec rev 5)', () => {
+  it('has no details/chevron button on any line', () => {
+    render(<TradesView />)
+    for (const n of [1, 2, 3]) {
+      for (const l of lines(n)) {
+        expect(within(l).getAllByRole('button')).toHaveLength(1)
+        expect(l.textContent).not.toMatch(/[⌄⌃]/)
+      }
+    }
+  })
+
+  it('shows the details of a bought line at the current stop and collapses them when unmarked', async () => {
+    const user = userEvent.setup()
+    render(<TradesView />)
+    const scrap = line(1, 'Scrap', 3)
+    expect(within(scrap).queryByText('Margin / SCU')).not.toBeInTheDocument()
+    await user.click(toggle(scrap))
+    expect(within(scrap).getByText('Margin / SCU')).toBeInTheDocument()
+    expect(within(scrap).getByText(/boxes$/)).toBeInTheDocument()
+    await user.click(toggle(scrap))
+    expect(within(scrap).queryByText('Margin / SCU')).not.toBeInTheDocument()
+  })
+
+  it('expands lines at later stops on tap (aria-expanded) and collapses them again', async () => {
+    const user = userEvent.setup()
+    render(<TradesView />)
+    const waste = line(2, 'Waste')
+    const button = within(waste).getByRole('button')
+    expect(button).toHaveAttribute('aria-expanded', 'false')
+    expect(button).not.toHaveAttribute('aria-pressed')
+    await user.click(button)
+    expect(button).toHaveAttribute('aria-expanded', 'true')
+    expect(within(waste).getByText('Margin / SCU')).toBeInTheDocument()
+    expect(useAppStore.getState().trip.bought).toEqual([])
+    await user.click(button)
+    expect(within(waste).queryByText('Margin / SCU')).not.toBeInTheDocument()
+  })
+
+  it('expands lines of a departed stop on tap, read-only', async () => {
+    const user = userEvent.setup()
+    render(<TradesView />)
+    await user.click(toggle(line(1, 'Scrap', 3)))
+    await user.click(within(section(1)).getByRole('button', { name: 'Depart →' }))
+    await user.click(within(section(1)).getByRole('button', { name: /ARC-L1 Wide Forest Station/ }))
+    const steel = line(1, 'Steel')
+    await user.click(within(steel).getByRole('button'))
+    expect(within(steel).getByText('Margin / SCU')).toBeInTheDocument()
+    expect(useAppStore.getState().trip.bought).toHaveLength(1)
   })
 })

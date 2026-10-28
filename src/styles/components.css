@@ -945,32 +945,7 @@
   overflow-wrap: anywhere;
 }
 
-/* Option line: a toggle (bought) plus a separate details chevron, 44 px each. */
-.option__row {
-  position: relative;
-}
-
-.option__line--static {
-  cursor: default;
-}
-
-.option__name {
-  padding-right: 40px;
-}
-
-.option__chevron {
-  position: absolute;
-  top: 0;
-  right: 0;
-  width: var(--tap);
-  height: var(--tap);
-  padding: 0;
-  background: transparent;
-  border: 0;
-  color: var(--amber);
-  font-size: 1.25rem;
-}
-
+/* Option line: tapping toggles "bought" at the current stop, elsewhere it expands the details. */
 /* bought: light green border (2 px), ✓, name and a faint green fill */
 .option--bought {
   border-color: var(--sel);
