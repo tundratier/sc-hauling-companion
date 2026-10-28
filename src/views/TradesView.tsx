@@ -3,13 +3,13 @@ import { buildStaticIndexes } from '../api/indexes'
 import { groupByStop, type DroppedCounts, type Haul, type HaulSortKey } from '../calc'
 import { DataGate } from '../components/DataGate'
 import { OptionLine } from '../components/OptionLine'
+import { terminalDisplay } from '../domain/terminalDisplay'
 import type { Terminal } from '../domain/types'
 import { useTrades } from '../hooks/useTrades'
 import { boxRangeText, formatAgeMs, formatClock, formatInt } from '../lib/format'
 import { shortName } from '../lib/terminalNames'
 import { useAppStore } from '../state/useAppStore'
 import { useDataStore } from '../state/useDataStore'
-import { terminalSecondary } from './RouteView'
 
 const TOP_N = 5
 
@@ -63,6 +63,7 @@ function StopSection({
 }: StopSectionProps) {
   const [expanded, setExpanded] = useState(false)
   const terminal = terminalById.get(terminalId)
+  const display = terminal ? terminalDisplay(terminal) : undefined
   const last = index === stopCount - 1
   const visible = expanded ? options : options.slice(0, TOP_N)
   return (
@@ -71,9 +72,9 @@ function StopSection({
         <span className="stop__index num">{index + 1}</span>
         <div className="stop__text">
           <h3 className="stop__primary">
-            {terminal?.displayname ?? `Unknown terminal (#${terminalId})`}
+            {display?.primary ?? `Unknown terminal (#${terminalId})`}
           </h3>
-          {terminal && <div className="stop__secondary">{terminalSecondary(terminal)}</div>}
+          {display?.secondary && <div className="stop__secondary">{display.secondary}</div>}
         </div>
       </header>
       {last ? (

@@ -35,18 +35,21 @@
 }
 
 .app-main {
+  display: flex;
+  flex-direction: column;
   flex: 1 1 auto;
   min-width: 0;
   padding: var(--gutter);
-  /* room for the fixed tab bar (and the sticky CTA above it on ROUTE) */
-  padding-bottom: calc(var(--tabbar-height) + env(safe-area-inset-bottom) + 88px);
 }
 
-/* Bottom tab bar, reachable by thumb. */
+.app-main > .stack {
+  flex: 1 1 auto;
+}
+
+/* Bottom tab bar, reachable by thumb. It lives inside the centered content column (never
+   positioned against the viewport edge), so it stays centered at every width. */
 .tabbar {
-  position: fixed;
-  left: 0;
-  right: 0;
+  position: sticky;
   bottom: 0;
   z-index: 30;
   background: var(--panel);
@@ -100,6 +103,7 @@
 }
 
 .view {
+  flex: 1 1 auto;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -122,23 +126,29 @@
   font-size: 0.8125rem;
 }
 
-/* Sticky bottom action (e.g. CALCULATE TRADES) sitting above the tab bar. */
+/* Sticky bottom action (CALCULATE TRADES) above the tab bar, inside the content column:
+   full column width below 600 px, otherwise max 480 px centered. */
 .sticky-action {
-  position: fixed;
-  left: 0;
-  right: 0;
+  display: flex;
+  justify-content: center; /* centers the button regardless of its own display type */
+  position: sticky;
   bottom: calc(var(--tabbar-height) + env(safe-area-inset-bottom));
   z-index: 25;
-  padding: 8px var(--gutter);
+  margin-top: auto;
+  padding: 8px 0;
   background: linear-gradient(to top, var(--bg) 70%, transparent);
-  pointer-events: none;
 }
 
 .sticky-action > * {
-  display: flex;
-  max-width: calc(var(--max-width) - 2 * var(--gutter));
-  margin: 0 auto;
-  pointer-events: auto;
+  flex: 1 1 100%;
+  min-width: 0;
+}
+
+@media (min-width: 600px) {
+  .sticky-action > * {
+    flex-basis: 480px;
+    max-width: 480px;
+  }
 }
 
 /* Narrow screens: title + refresh on the first row, data status pill below. */

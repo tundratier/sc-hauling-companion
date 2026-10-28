@@ -776,3 +776,50 @@
   color: var(--amber-faint);
   text-decoration: line-through;
 }
+
+/* Compact route rows (≈ 64–72 px): index, text and the four 44 px controls side by side. */
+.stop {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 4px 4px 6px;
+  min-height: 64px;
+}
+
+.stop__index {
+  width: 20px;
+}
+
+.stop__text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.stop__primary {
+  overflow: visible;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.2;
+}
+
+.stop__secondary {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  white-space: normal;
+  line-height: 1.2;
+}
+
+.stop__actions {
+  grid-column: auto;
+  flex: none;
+}
+
+.stop__actions .btn,
+.stop__handle {
+  min-width: var(--tap);
+  width: var(--tap);
+  min-height: var(--tap);
+}
