@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.0.1 - 2026-10-28
+
+### Build and CI
+
+- **docker:** Add check and dist stages and a configurable base path
+- Deploy to GitHub Pages on pushes to master
+- List build, ci and chore commits in the changelog
+
+### Miscellaneous
+
+- Add MIT license
+
 ## 1.0.0 - 2026-10-28
 
 ### Features
@@ -44,4 +56,17 @@
 - **ui:** Give dropdown chevrons proper inner spacing
 - **results:** Restore the details button as a labelled button independent of bought
 - **results:** Center the details button chevron with an inline svg
+
+### Build and CI
+
+- **docker:** Add multi-stage Dockerfile, compose services and nginx config
+- Add eslint and prettier configuration
+- Add git-cliff configuration for version derivation
+- Avoid escape sequences in cliff tag pattern
+- Switch to TypeScript 7 and oxlint, remove ESLint
+
+### Miscellaneous
+
+- Scaffold Vite React TypeScript app with Vitest
+
 
