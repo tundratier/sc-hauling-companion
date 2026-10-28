@@ -6,6 +6,8 @@ This document is the single source of truth for implementing v1.0. It is written
 
 ### Revision history
 
+**Revision 7 (2026-10-28)** — the chevron in the Details button is an inline SVG, vertically centered with the label, instead of a text glyph that sat off-center (§7.5).
+
 **Revision 6 (2026-10-28)** — the details button returns, now as a bordered, labelled `DETAILS ⌄` button in normal flow at the right of row 1 (§7.5):
 - Badges move to row 2.
 - Details open and close independently of "bought". Revision 5 tied them together, so a bought line couldn't be collapsed without unmarking it.
@@ -513,7 +515,8 @@ These values are a starting point. Tune them in the browser to match the warm-wh
     BUY 2,810 → SELL 3,315 /SCU             18.0 %
     ```
 - **Details button** — it must clearly look like a button, unlike the bare `v` of revision 4:
-  - **Label:** text `DETAILS` plus a chevron `⌄`; when open, `HIDE ⌃`. Uppercase mono, 12 px, `--amber`.
+  - **Label:** text `DETAILS` plus a chevron; when open, `HIDE` plus the chevron rotated 180°. Uppercase mono, 12 px, `--amber`.
+  - **Chevron:** do not use text glyphs (`⌄`, `^`, `v`). Their font metrics put them on or above the baseline, so they never center. Use the same inline SVG chevron as the dropdowns: 12 × 12 px, `stroke: currentColor`, `display: block`. Lay out the label and icon with `display: inline-flex; align-items: center; gap: 6px`, so the icon's optical center lines up with the text's x-height center in both states.
   - **Style:** 1 px `--amber-dim` border, 4 px radius, `--panel-raised` background, padding 4 × 10 px, visual height ≈ 28 px. Hover/focus: border `--amber`. Pressed/open: border `--amber` and background slightly lighter.
   - **Size:** the hit area is ≥ 44 × 44 px, extended with transparent padding or a pseudo-element.
   - **Layout:** it sits in normal document flow at the right end of row 1 and is never absolutely positioned, so it can't overlap the profit. Below 360 px content width the label may shorten to `⌄` / `⌃`, but the bordered box stays.
