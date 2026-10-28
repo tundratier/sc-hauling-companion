@@ -1,8 +1,27 @@
 # SC Hauling Companion — Specification v1.0
 
-Status: ready for implementation · Written: 2026-10-27 · Target game version at time of writing: Star Citizen LIVE 4.10.2
+Status: revision 2, ready for implementation · Written: 2026-10-27 · Revised: 2026-10-28 · Target game version at time of writing: Star Citizen LIVE 4.10.2
 
 This document is the single source of truth for implementing v1.0. It is written for an implementing agent that has no other context. Everything marked **MUST** is required for v1.0; **SHOULD** is expected unless it causes significant cost; **MAY** is optional.
+
+### Revision history
+
+**Revision 2 (2026-10-28)** — product owner review of the first implementation, merged with the implementer's report:
+
+| Area | Change | Section |
+|---|---|---|
+| Tooling | Latest language versions win over tooling: TypeScript 7; ESLint/typescript-eslint replaced by **oxlint** | §2, §2.1 |
+| Tooling | `cliff.toml` tag pattern as TOML literal string with `[.]` | §2.2 |
+| Data | A new LIVE game version expires cached prices (stale-while-revalidate), no forced refresh | §5.2 |
+| Calc | Box size is a **min–max range** (no more loading hundreds of 1-SCU boxes); sell row's `container_sizes` also constrain boxes | §6.1, §6.3 |
+| Calc / UI | **Plans removed.** TRADES now lists, under each stop, the commodities to buy there ranked by profit, each line naming its sell stop | §6.5, §7.5 |
+| UI | Amber shifted towards warm white (747 night lighting) | §7.1 |
+| UI | Placeholders use `--amber-dim`; `--amber-faint` only for disabled controls | §7.1 |
+| UI | Sticky CALCULATE TRADES button centered in the content column at all widths | §7.2, §7.4 |
+| UI | Route stop secondary line shows planet · moon · system instead of repeating the name | §7.4 |
+| UI | Badges are small, non-interactive chips; the trade line is the touch target | §7.5 |
+| UI | Allowed box sizes shown next to every commodity | §7.5 |
+| Defaults | Free SCU = 32 without a ship; "Investment" sorts descending | §7.3, §7.5 |
 
 ---
 
@@ -24,13 +43,13 @@ Out of scope for v1.0: route ordering/optimization, distances/travel time, minin
 |---|---|
 | App type | Single-page application, client-side only (no backend) |
 | Build | Vite, React, TypeScript (`strict: true`) |
-| Versions | Latest stable majors at implementation time (expected: Node 24 LTS, React 19, Vite ≥7, TS ≥5.6). Pin exact versions via `package-lock.json`. |
+| Versions | Latest stable versions of languages, runtimes and frameworks (at revision 2: **TypeScript 7**, Node 24 LTS, React 19, Vite 8). Pin exact versions via `package-lock.json`. **Language and runtime versions take priority over tooling:** if a tool (linter, formatter, plugin) does not support the latest language version, replace the tool; never downgrade the language to keep a tool. |
 | State | Zustand (with `persist` middleware → `localStorage`) for user input; plain modules for data/cache |
 | Persistence of API data | IndexedDB via `idb-keyval` |
 | Styling | Plain CSS with CSS custom properties (CSS Modules or a single global stylesheet). No UI framework. |
 | Fonts | Bundled via `@fontsource/*` (no runtime calls to Google Fonts). Suggested: `@fontsource/share-tech-mono` for numerics/labels + `@fontsource/ibm-plex-sans-condensed` for body text. |
 | Tests | Vitest + @testing-library/react (jsdom) |
-| Lint/format | ESLint (typescript-eslint, react-hooks plugin) + Prettier |
+| Lint/format | **oxlint** (no dependency on the TypeScript compiler API) with the `typescript`, `react`, `react-hooks`, `jsx-a11y` and `vitest` plugins and the `correctness` + `suspicious` categories as errors. Use type-aware rules (`oxlint --type-aware` with `oxlint-tsgolint`) if they work with TS 7, otherwise lint without them. Type checking is done by the TS 7 compiler (`typecheck` script). Formatting: Prettier, as long as it parses all TS 7 syntax used; otherwise replace it with oxfmt. Remove ESLint, typescript-eslint and their plugins/configs completely. |
 | Host tools | **Only Docker / Docker Compose and git (+ git flow).** No host Node.js, npm or other runtimes may be assumed. Every build, dev, test, lint and scaffold command runs in a container. |
 
 ### 2.1 Docker setup (MUST)
@@ -59,7 +78,7 @@ Scaffolding without host Node (PowerShell example):
 docker run --rm -v "${PWD}:/app" -w /app node:24-alpine sh -c "npm create vite@latest scaffold -- --template react-ts && cp -r scaffold/. . && rm -rf scaffold"
 ```
 
-Required `package.json` scripts: `dev`, `build` (`tsc -b && vite build`), `preview`, `test` (`vitest`), `lint`, `typecheck` (`tsc -b --noEmit`), `format`.
+Required `package.json` scripts: `dev`, `build` (typecheck with the TS 7 compiler, then `vite build`), `preview`, `test` (`vitest`), `lint` (`oxlint`), `typecheck` (TS 7 compiler in no-emit/build mode over all tsconfig projects), `format`.
 
 Standard commands (document these in `README.md`):
 
@@ -89,7 +108,7 @@ When dependencies change: `docker compose run --rm dev npm install <pkg>` (updat
 
   One logical change per commit; never hide a user-visible change in `chore`/`refactor`.
 - Versioning/changelog tool: **git-cliff**, run from its Docker image (pin a concrete tag, e.g. `orhunp/git-cliff:2.x.y`). A `cliff.toml` at the repo root MUST set:
-  - `tag_pattern = "[0-9]+\\.[0-9]+\\.[0-9]+"`, because tags have no `v` prefix;
+  - `tag_pattern = '[0-9]+[.][0-9]+[.][0-9]+'` (TOML literal string; an escaped `\\.` in a basic string failed to parse), because tags have no `v` prefix;
   - conventional-commit parsing with the bump rules above;
   - grouping into Features / Bug Fixes / Performance in `CHANGELOG.md`.
   
@@ -132,7 +151,7 @@ Suggested feature branch sequence (each ends green on `test` + `lint`):
 | **SCU** | Standard Cargo Unit. Prices from UEX are per SCU. |
 | **Box / container size** | Cargo containers come in 1, 2, 4, 8, 16, 24, 32 SCU. Terminals sell/accept specific sizes; ships' grids accept specific sizes. |
 | **Haul** | One buy-then-sell transaction of one commodity: buy at stop i, sell at stop j > i. If j > i+1 the haul **skips** the stops in between (cargo stays on board). |
-| **Plan** | A set of hauls executed on one route run, respecting free cargo space on every segment. |
+| **Buy option** | One line in the TRADES view: a haul listed under its buy stop, naming its sell stop. |
 | **Free SCU (C)** | Cargo space available for trading (ship capacity minus mission cargo). |
 
 ---
@@ -286,7 +305,7 @@ Cache entry: `{ key, schemaVersion, fetchedAt (ms), gameVersion, data }`.
 Behavior:
 
 - **Stale-while-revalidate**: if a cached entry exists, render with it immediately; if expired, refetch in the background and recompute when it arrives. Show "prices updated HH:MM · age" in the results header.
-- Static refresh fetches E1, E2, E3, E5 in parallel (4 requests). If E5's `live` differs from the cached `gameVersion`, also force a price refresh.
+- Static refresh fetches E1, E2, E3, E5 in parallel (4 requests). Cached prices are tagged with the game version they were fetched under; if E5's `live` differs, the cached prices count as expired and go through stale-while-revalidate (old prices shown, refetched in the background, results recomputed). This does not bypass the manual-refresh cooldown.
 - No polling, no refetch while `document.visibilityState === "hidden"`.
 - Manual "Refresh prices" is disabled for 60 s after a fetch (server data won't change faster than its 30 min cache anyway).
 - On network/API error: keep using cached data, show a non-blocking banner ("Offline — showing data from …"). If there is no cache at all, show a blocking error with a Retry button.
@@ -311,7 +330,7 @@ interface CalcInput {
   stops: number[];            // terminal ids in route order, length 2..10
   freeScu: number;            // C, integer ≥ 1
   shipBoxSizes: number[] | null; // from vehicle, null = unknown
-  maxBoxOverride: number | null; // user-chosen max box size (1..32) or null
+  boxRange: { min: number; max: number }; // user-chosen box size range, values from STD (1..32), min ≤ max
   options: {
     includeIllegal: boolean;          // default true (illegal hauls are badged)
     includeVolatileQt: boolean;       // default false
@@ -332,18 +351,20 @@ For every pair of stop indices `i < j` and every commodity `c` with a buy offer 
 
 - `unitBuy = price_buy(i,c)`, `unitSell = price_sell(j,c)`, `margin = unitSell − unitBuy`. Skip if `margin ≤ 0`.
 - `cap = floor(C)`. Reported inventory never reduces it.
-- **Inventory warnings** (informational, the haul stays in every result set):
+- **Inventory warnings** (informational, the haul is always listed):
   - `noStock` if `status_buy = 1`; `lowStock` if `status_buy = 2`.
   - `noDemand` if `status_sell = 7`; `lowDemand` if `status_sell = 6`.
   - Also carry the raw values for display: `scu_buy` (fallback `scu_buy_avg`), `scu_sell_stock`, and `scu_sell` only when `> 0`. A `status_sell` of 1 is shown only when `scu_sell > 0` (otherwise it is an unreported default, see §4.2).
-- **Allowed box sizes** `B = STD ∩ rowSizes(i,c) ∩ shipSizes ∩ {s ≤ maxBox} ∩ {s ≤ terminal(stops[j]).maxContainerSize if > 0}` where
+- **Allowed box sizes** `B = STD ∩ buySizes ∩ sellSizes ∩ shipSizes ∩ [boxRange.min, boxRange.max]` where
   - `STD = {1,2,4,8,16,24,32}`,
-  - `rowSizes(i,c)` = the buy row's `container_sizes`; if empty → `{s ∈ STD : s ≤ terminal(stops[i]).maxContainerSize}` (or all STD if that is 0) and flag `boxSizesUnknown`,
-  - `shipSizes` = vehicle sizes; if null → STD and flag `shipBoxSizesUnknown`,
-  - `maxBox` = `maxBoxOverride ?? max(shipSizes) ?? 32`.
-  - If `B` is empty → haul is **not possible with this ship**; drop it (count dropped hauls and show "N trades need bigger boxes than your ship takes").
-- `qtyMax = maxFillable(cap, B)` — the largest integer ≤ `cap` that is a non-negative integer combination of sizes in `B` (unbounded-knapsack reachability DP, O(cap·|B|); cap ≤ ~12,000). If 0 → drop.
-- Also compute a **box breakdown** for display: greedy largest-first decomposition of the quantity (valid because DP already proved representability; if greedy fails, use the DP backtrack).
+  - `buySizes` = the buy row's `container_sizes`; if empty → `{s ∈ STD : s ≤ terminal(stops[i]).maxContainerSize}` (or all STD if that is 0) and flag `boxSizesUnknown`,
+  - `sellSizes` = the sell row's `container_sizes`; if empty → `{s ∈ STD : s ≤ terminal(stops[j]).maxContainerSize}` (or all STD if that is 0) and flag `boxSizesUnknown`,
+  - `shipSizes` = vehicle sizes; if null → STD and flag `shipBoxSizesUnknown`.
+  - If `B` is empty, drop the haul and count it under one reason (counts are per candidate, i.e. per commodity × i × j):
+    - `boxTooLarge` — every size offered at the terminals is above `boxRange.max` or not accepted by the ship ("N trades need bigger boxes than your ship takes");
+    - `boxTooSmall` — the only sizes offered are below `boxRange.min` ("N trades only come in boxes smaller than your minimum").
+- `qtyMax = maxFillable(cap, B)` — the largest integer ≤ `cap` that is a non-negative integer combination of sizes in `B` (unbounded-knapsack reachability DP, O(cap·|B|); cap ≤ ~12,000). If 0 (free SCU smaller than the smallest allowed box), drop it under `boxTooLarge`. `unusedScu = cap − qtyMax` is shown when > 0 (e.g. "2 SCU unused · min box 4").
+- Also compute a **box breakdown** for display: greedy largest-first decomposition of the quantity (valid because DP already proved representability; if greedy fails, use the DP backtrack). Include the total box count (e.g. `2×16 + 1×8 + 1×4 = 4 boxes`).
 
 Store per candidate: commodity, i, j, unitBuy, unitSell, margin, qtyMax, B, statuses and reported SCU values (display only), price ages (both rows), flags (`illegal`, `volatileTime`, `temporary`, `noStock`, `lowStock`, `noDemand`, `lowDemand`, `boxSizesUnknown`, `shipBoxSizesUnknown`, `stale` if either row older than 7 days).
 
@@ -356,47 +377,20 @@ Store per candidate: commodity, i, j, unitBuy, unitSell, margin, qtyMax, B, stat
 - `profitPerScu = margin`
 - `skips = j − i − 1` (number of stops passed without selling)
 
-### 6.5 Result sets ("multiple options")
+### 6.5 Result: buy options per stop ("multiple options")
 
-The calculator returns two result sets.
+The calculator returns **one list of buy options per stop**: for each stop index `i` from 0 to n−2, every candidate with that buy stop `i`, at `q = qtyMax`.
 
-**A. Single hauls** — every candidate at `q = qtyMax`, sorted by profit desc (user can re-sort by ROI, margin, investment). This list naturally contains skip options (A→C next to A→B and B→C). Hauls with inventory warnings are **not** removed or demoted; they carry warning badges.
-
-**B. Plans** — a plan is a sequence of non-overlapping **loads**. A load is what is carried from stop i to stop j.
-
-1. **Build one load per stop pair (i, j), i < j** — fill the free space greedily:
-   - Sort the candidates for (i, j) by margin, highest first.
-   - Set `remaining = C`.
-   - For each candidate in that order, take `q = maxFillable(remaining, B)`; if `q > 0`, add it to the load and subtract it from `remaining`. Stop when `remaining = 0`.
-   - Usually a load is a single commodity. A second commodity is added only when box granularity leaves space unused (example: 46 SCU free, best commodity only in 8/16 boxes → 40 SCU of it plus 6 SCU of the next best).
-   - The load's profit is the sum of its parts.
-2. **Choose loads with dynamic programming over stops** — a load ends at the stop where the next one begins, or later:
-
-```
-best[0] = {∅}
-best[k] = topK( best[k−1]  ∪  { p + load(i,k) : i < k, p ∈ best[i] } )
-```
-   Keep the **top K = 5** distinct plans per stop by total profit. The output is `best[n−1]`, excluding the empty plan; the first one is labelled **MAX**.
-3. **Why this is optimal:** inventory is not a constraint, so the whole free space always goes to the best-margin load, and splitting space between overlapping loads never beats the DP. This holds up to box-granularity rounding, which is accepted for v1. No flow solver is needed.
-4. **Correctness test** (MUST be a unit test, because greedy fails it): stops A, B, C, C = 100 SCU, candidates X: A→C margin 10, Y: A→B margin 8, Z: B→C margin 8. Expected MAX = Y + Z = 1,600 aUEC, not X = 1,000. Plan #2 = X = 1,000.
+- **One line per (commodity, sell stop).** A commodity that can be sold at two later stops appears twice, once per sell stop. Skip options (A→C next to A→B) appear naturally.
+- **Sorting:** by profit, highest first (default). The user can switch the sort for all stops at once to ROI, margin/SCU or investment, all descending. Tie-break by margin, then commodity name.
+- **Inventory warnings never remove or demote a line**; they only add badges.
+- **No plans.** The app does not combine hauls into route plans or track cargo on board. The player builds split loads themselves from the per-stop lists, e.g. part of the space for the best commodity (limited stock) plus another commodity from the same stop. This is why each line shows profit for the full free space **and** margin/SCU.
+- The last stop has no buy options (it is sell-only).
+- Remove the previous plan code (`plans.ts`, `timeline.ts`, `PlanView`) and its tests instead of leaving it unused.
 
 Run the calculation in `useMemo`. Expected input is ≤ 10 stops × ~60 commodities, so a Web Worker is not needed.
 
-**Per plan** compute: total profit, total investment, overall ROI (`Σprofit / Σinvestment`), **peak SCU** on board (max over segments), **capital required** (simulate cash: at each stop sell first, then buy; capital required = −min(running cash)), number of transactions, oldest price age, aggregated flags.
-
 **Same terminal twice**: stops are positions, so a terminal visited twice is treated as two independent stops.
-
-### 6.6 Execution timeline (per plan)
-
-Convert a plan to a stop-by-stop checklist for the in-game view (values below are illustrative, not real prices):
-
-```
-Stop 1  ARC-L1 Wide Forest Station (Admin - ARC-L1)
-  BUY   46 SCU  Laranite        @ 2,810   = 129,260   boxes 2×16, 1×8, 1×4, 1×2
-Stop 2  …   (no trade — pass through, 46 SCU on board)
-Stop 3  …
-  SELL  46 SCU  Laranite        @ 3,315   = 152,490   +23,230
-```
 
 ---
 
@@ -404,23 +398,25 @@ Stop 3  …
 
 ### 7.1 Visual design — "night cockpit"
 
-Dark UI with amber highlights, modeled on night-lit commercial avionics: near-black panels, amber primary information, dim amber secondary, very sparing use of red for warnings. No pure white anywhere. Define as CSS custom properties on `:root`:
+Dark UI modeled on a Boeing 747 flight deck at night: near-black panels lit by **warm white, slightly amber** light (incandescent panel lighting), not saturated orange. Very sparing use of red-orange for warnings. No pure white anywhere. Define as CSS custom properties on `:root`:
 
 | Token | Value | Use |
 |---|---|---|
 | `--bg` | `#0a0907` | page background |
 | `--panel` | `#13110c` | cards/panels |
 | `--panel-raised` | `#1c1910` | inputs, selected rows |
-| `--line` | `#3a2e14` | borders, dividers |
-| `--amber` | `#ffb000` | primary values, active elements, focus ring |
-| `--amber-bright` | `#ffc94d` | key numbers (profit) |
-| `--amber-dim` | `#b07a10` | labels, secondary text |
-| `--amber-faint` | `#5c420c` | disabled, placeholders |
-| `--warn` | `#ff6a3d` | ILLEGAL badge, errors, stale data |
-| `--ok` | `#d6c36a` | positive/OK status (a desaturated yellow-green; stays within the amber family) |
+| `--line` | `#3d3220` | borders, dividers |
+| `--amber` | `#ffcf7a` | primary values, active elements, focus ring (pale amber) |
+| `--amber-bright` | `#ffe8c4` | key numbers such as profit (warm white) |
+| `--amber-dim` | `#c99a58` | labels, secondary text, **placeholders** (≈ 7:1 on `--panel`, ≈ 6.5:1 on `--panel-raised`) |
+| `--amber-faint` | `#5e4a2c` | **disabled controls only** (fails AA for text, so never use it for readable text or placeholders) |
+| `--warn` | `#ff7a4d` | ILLEGAL badge, inventory warnings, errors, stale data |
+| `--ok` | `#d9cf8f` | positive/OK status (stays within the warm-white family) |
+
+These values are a starting point. Tune them in the browser to match the warm-white look, keeping the contrast ratios above.
 
 - Typography: monospace (`Share Tech Mono` or similar) for all numbers, labels in uppercase with `letter-spacing: 0.08em`; tabular numerals (`font-variant-numeric: tabular-nums`). Base size 16 px (prevents iOS zoom on input focus).
-- Subtle glow on primary numerals: `text-shadow: 0 0 6px rgba(255,176,0,.35)`; no animations beyond 150 ms transitions; respect `prefers-reduced-motion`.
+- Subtle glow on primary numerals: `text-shadow: 0 0 6px rgba(255,207,122,.30)`; no animations beyond 150 ms transitions; respect `prefers-reduced-motion`.
 - `color-scheme: dark`; `<meta name="theme-color" content="#0a0907">`.
 - Contrast: all text ≥ WCAG AA against its background (amber-dim on panel must be checked; adjust if below 4.5:1 for body text).
 
@@ -428,7 +424,8 @@ Dark UI with amber highlights, modeled on night-lit commercial avionics: near-bl
 
 - Mobile-first, designed for **360–820 px** width (phones and small tablets, portrait and landscape). At ≥ 900 px the content is centered with max-width 820 px (desktop works but is not optimized).
 - No horizontal page scroll at 360 px. Tables become stacked cards below 600 px.
-- Touch targets ≥ 44×44 px; primary actions reachable by thumb (bottom area).
+- Touch targets ≥ 44×44 px for interactive elements; primary actions reachable by thumb (bottom area). Purely informational elements (badges) are not touch targets and stay small (§7.5).
+- Sticky bottom elements (tab bar, CALCULATE TRADES button) are laid out inside the same centered content column as the page (max-width 820 px), so they stay centered at every viewport width. Never position them relative to the viewport's left edge.
 - Three views switched by a **bottom tab bar**: `SHIP` · `ROUTE` · `TRADES`. The selected tab and all inputs persist across reloads (Zustand `persist`, key `shc:v1`).
 - Header strip: app name "HAULING COMPANION", data status pill (e.g. `PRICES 12m · LIVE 4.10.2`), refresh icon button.
 - Footer (in SHIP view): "Data: UEX Corp (uexcorp.space) · community-sourced, may be inaccurate · Not affiliated with Cloud Imperium Games."
@@ -436,14 +433,35 @@ Dark UI with amber highlights, modeled on night-lit commercial avionics: near-bl
 ### 7.3 SHIP view
 
 - **Ship** combobox: searches `name_full` (same matching rules as §7.4). Shows vehicles with `scu > 0`; toggle "Show concept ships" (default off). Option line: `Drake Cutlass Black` / secondary `46 SCU · boxes ≤16`.
-- **Free cargo (SCU)** numeric input with − / + steppers (step 1, long-press accelerates) and quick buttons `25 %`, `50 %`, `75 %`, `100 %` of ship SCU. Defaults to ship SCU when a ship is chosen. Clamp to 1…ship SCU (if no ship chosen: 1…100,000).
-- **Max box size** segmented control `1 2 4 8 16 24 32`, preselected from the ship's largest accepted size; if the ship's sizes are unknown show "Box sizes for this ship unknown — choose the largest box that fits" and preselect 32.
+- **Free cargo (SCU)** numeric input with − / + steppers (step 1, long-press accelerates) and quick buttons `25 %`, `50 %`, `75 %`, `100 %` of ship SCU. Defaults to ship SCU when a ship is chosen, and to 32 SCU when none is. Clamp to 1…ship SCU (if no ship chosen: 1…100,000; the TRADES summary then says "no ship selected").
+- **Box sizes** = a **dual-handle range slider** over the discrete steps `1 2 4 8 16 24 32` (evenly spaced, snapping to steps, tick labels under each step). The value is `boxRange = {min, max}`:
+  - The range shows as text next to the label, e.g. `BOXES 4–16 SCU`.
+  - When a ship is chosen, `max` is preset to the ship's largest accepted size and `min` to `min(4, max)`. The user can change both, and the choice persists.
+  - Steps the ship does not accept are drawn disabled on the track. `max` cannot go above the ship's largest size unless the ship's sizes are unknown.
+  - If the ship's sizes are unknown, show "Box sizes for this ship unknown — set the largest box that fits" and preset `{min: 4, max: 32}`.
+  - Both handles must be usable by touch and keyboard (each handle is a `role="slider"` with arrow keys; ≥ 44 px hit area). Two overlaid native `<input type="range">` elements are acceptable.
 - **Filters**: toggles for Include illegal (on) and Include quantum-volatile (off). There are deliberately **no** stock/demand filters; reported inventory only produces warnings.
 - Data controls: "Refresh prices", "Reload all data" (with timestamps).
 
 ### 7.4 ROUTE view
 
-- Ordered list of stops (2–10). Each row: position number, terminal display (primary: `displayname`, secondary: `name · star_system_name` — the secondary line is required because `displayname` is not unique), drag handle (pointer + touch reorder; MUST also provide up/down buttons for accessibility), remove button.
+- Ordered list of stops (2–10). Each row: position number, terminal display, drag handle (pointer + touch reorder; MUST also provide up/down buttons for accessibility), remove button. Rows SHOULD stay compact (about 64–72 px): place the row controls side by side, not stacked.
+- **Terminal display** (same format in the route rows, the autocomplete results and the TRADES view):
+  - Primary line: `displayname`.
+  - Secondary line: the parts below joined with ` · `, skipping null/empty parts and any part that equals, or is contained in, the primary line or an earlier part (case-insensitive, after the normalization in the autocomplete rules):
+    1. `name`, only when it differs from `displayname`. This keeps the Area18 terminals apart, e.g. `TDD - Trade and Development Division - Area 18`.
+    2. `planet_name`
+    3. `moon_name`
+    4. `star_system_name`
+  - Examples (real data, 2026-10-27):
+
+    | Primary (`displayname`) | Secondary |
+    |---|---|
+    | `HDMS-Hahn` | `Hurston · Magda · Stanton` (previously the useless `HDMS-Hahn · Stanton`) |
+    | `Shubin Mining Facility SM0-22` | `MicroTech · Stanton` |
+    | `ARC-L1 Wide Forest Station` | `Admin - ARC-L1 · ArcCorp · Stanton` (and `Platinum Bay - ARC-L1 · ArcCorp · Stanton`) |
+    | `Area18` | `TDD - Trade and Development Division - Area 18 · ArcCorp · Stanton` |
+  - Cover this with unit tests using these fixture terminals.
 - "Add stop" field at the bottom = **autocomplete**:
   - Source: terminals from E2 with `is_available_live && is_visible` (toggle "show unavailable terminals").
   - Haystack per terminal: `name, nickname, displayname, fullname, code, space_station_name, city_name, outpost_name, moon_name, planet_name, orbit_name, star_system_name`, lower-cased and diacritics-stripped (`normalize('NFD').replace(/\p{Diacritic}/gu,'')`), with `-`, `_`, `.` and `'` treated as spaces so `"arc l1"`, `"arcl1"` and `"ARC-L1"` all match.
@@ -452,25 +470,33 @@ Dark UI with amber highlights, modeled on night-lit commercial avionics: near-bl
   - Results show as an overlay list above the on-screen keyboard; keyboard support (↑ ↓ Enter Esc) on desktop. Selecting adds the stop and clears the input (focus stays to add the next).
   - Start filtering at 1 character; no network calls (all local).
 - "Clear route" with confirmation; "Reverse route" button.
-- A sticky bottom button "CALCULATE TRADES →" switches to TRADES (calculation is also live/automatic whenever inputs change).
+- A sticky bottom button "CALCULATE TRADES →" switches to TRADES (calculation is also live/automatic whenever inputs change). It is horizontally centered in the content column at every width (§7.2): full column width below 600 px, otherwise max-width 480 px with `margin-inline: auto`.
 
 ### 7.5 TRADES view
 
-- Summary header: route (`ARC-L1 → Area18 TDD → …`), free SCU, ship, data age.
-- Empty/insufficient states: fewer than 2 stops → hint linking to ROUTE; no profitable trades → "No profitable trades along this route" + count of dropped trades by reason (box size, illegal filter, volatile filter, price-age filter).
-- **Plans** section (result set B): horizontal chips `MAX`, `#2`, `#3`, … Selecting a chip shows:
-  - KPI row: **Profit** (largest, `--amber-bright`), ROI %, Investment, Capital required, Peak SCU / C.
-  - Execution timeline (§6.6), one card per stop, BUY/SELL lines, "pass through" stops shown collapsed with on-board SCU.
-  - Badges per haul: `ILLEGAL` (`--warn`), `SKIPS 1` (amber outline), `STALE 9d`, `VOLATILE` (time).
-  - Inventory warnings (`--warn` outline, with a question mark because the data is reported, not live): `NO STOCK?`, `LOW STOCK?`, `NO DEMAND?`, `LOW DEMAND?`. Tapping a badge shows the reported values and their age, e.g. "Reported 9 h ago: stock Out of Stock (0–14 %), 0 SCU. Inventory may have refilled since." A plan containing such a haul shows a warning count in its chip (e.g. `#2 ⚠1`).
-- **Single hauls** section (result set A): sort selector (Profit, ROI, Margin/SCU, Investment); each card shows:
-  - Commodity name + legality badge
-  - `Stop i → Stop j` with terminal short names, `SKIPS n` badge when j > i+1
-  - Buy price/SCU, sell price/SCU, margin/SCU
-  - Quantity SCU (`of C`), allowed box sizes (e.g. `□ 1·2·4·8·16`), box breakdown
-  - Investment, profit, ROI
-  - Reported inventory status and SCU values (labelled "reported"), inventory warnings, price ages
-  - Paginate/virtualize after 30 items ("Show more").
+- Summary header: route (`ARC-L1 → Area18 TDD → …`), free SCU, ship, box range, data age.
+- Sort selector for all stop lists: Profit (default), ROI, Margin/SCU, Investment — all descending.
+- Empty/insufficient states:
+  - fewer than 2 stops → hint linking to ROUTE;
+  - no profitable trades → "No profitable trades along this route" + count of dropped trades by reason (`boxTooLarge`, `boxTooSmall`, illegal filter, volatile filter, price-age filter).
+- **Stop sections**, one per stop in route order:
+  - Header: stop number + terminal display (§7.4).
+  - Body: the buy options for that stop (§6.5) as a compact list. Show the top 5; a "Show N more" button expands the rest.
+  - A stop with no options says "Nothing profitable to buy here". The last stop says "Final stop — sell only".
+- **Option line** (collapsed, one or two text rows, whole line is the ≥ 44 px touch target):
+  - Commodity name, followed directly by its **allowed box sizes** (e.g. `Laranite □ 4·8·16`) and small badges.
+  - `→ #3 Area18` — sell stop number + short terminal name, plus a `SKIPS 1` badge when it skips stops.
+  - **Profit** for the full load (`--amber-bright`, right-aligned) and ROI %.
+- **Expanded line** (tap to toggle):
+  - Buy price/SCU, sell price/SCU, margin/SCU.
+  - Quantity (`44 of 46 SCU`, plus "2 SCU unused · min box 4" when applicable) and the box breakdown with count.
+  - Investment, revenue, profit, ROI.
+  - Price ages for both rows.
+  - Reported inventory with its explanation, e.g. "Reported 9 h ago: stock Out of Stock (0–14 %), 0 SCU. Inventory may have refilled since." This replaces the tappable badges.
+- **Badges** are small, non-interactive chips: height ≈ 18–20 px, font 11 px uppercase, padding 0 6 px, 1 px outline. They are **not** touch targets.
+  - Types: `ILLEGAL` (`--warn` fill), `SKIPS n` (amber outline), `STALE 9d`, `VOLATILE`.
+  - Inventory warnings (`--warn` outline, question mark because the data is reported, not live): `NO STOCK?`, `LOW STOCK?`, `NO DEMAND?`, `LOW DEMAND?`.
+  - On narrow lines, show at most 3 badges and a `+n` chip; the expanded line lists all of them.
 - Number format: `en-US` grouping (`1,234,567`) with unit `aUEC`; on narrow cards MAY use compact (`1.23M`) with full value in `title`/expand. Percentages 1 decimal.
 - All results recompute synchronously (memoized) on any input change; no "calculate" round-trip to the API.
 
@@ -484,17 +510,17 @@ Dark UI with amber highlights, modeled on night-lit commercial avionics: near-bl
 
 ## 8. Acceptance criteria (v1.0)
 
-1. `docker compose up dev` serves the app on :5173 with hot reload on a Windows host; `docker compose run --rm test` and `docker compose run --rm lint` pass; `docker compose up --build app` serves the production build on :8080. No host Node required.
+1. `docker compose up dev` serves the app on :5173 with hot reload on a Windows host; `docker compose run --rm test` and `docker compose run --rm lint` (oxlint + TS 7 typecheck) pass; `docker compose up --build app` serves the production build on :8080. No host Node required. `package.json` contains TypeScript 7 and no ESLint packages.
 2. First load performs at most 5 API requests (E1–E5); reload within 30 min performs 0; after 30 min opening TRADES performs exactly 1 (E4). Verified via the browser network panel and a unit test with a mocked `fetch`.
-3. Typing `arc l1`, `ARCL1`, `wide forest` or `area18` in the stop field shows the corresponding terminals; duplicates of a `displayname` are distinguishable by the secondary line.
-4. Selecting a ship sets free SCU and max box; changing free SCU or max box immediately updates all results.
+3. Typing `arc l1`, `ARCL1`, `wide forest` or `area18` in the stop field shows the corresponding terminals; duplicates of a `displayname` are distinguishable by the secondary line; the secondary line never repeats the primary line (`HDMS-Hahn` shows `Hurston · Magda · Stanton`).
+4. Selecting a ship sets free SCU and the box range; changing free SCU or either end of the box range immediately updates all results.
 5. Raw commodities (`is_raw = 1`) and items never appear. Illegal commodities are badged and can be hidden.
-6. Single-hauls list includes skip options (i → j with j > i+1) with a `SKIPS n` badge.
-7. Hauls whose allowed box set is empty for the chosen ship are excluded and counted.
-8. Quantities never exceed free SCU on any segment (unit-tested for plans) and are representable by allowed box sizes.
-9. The greedy counter-example in §6.5 yields 1,600 for MAX and 1,000 for #2.
-10. Every displayed haul shows buy price, sell price, profit, ROI, legal/illegal, quantity, box sizes, and price age.
-11. Layout has no horizontal scroll at 360 px width; all touch targets ≥ 44 px; dark amber theme as in §7.1.
+6. TRADES shows one section per stop; each non-final stop lists its buy options ranked by the selected sort; every line names its sell stop; a commodity sellable at two later stops appears as two lines; skip options carry a `SKIPS n` badge. No plan chips or plan timeline exist.
+7. Hauls whose allowed box set is empty are excluded and counted as `boxTooLarge` or `boxTooSmall`.
+8. Quantities never exceed free SCU and use only box sizes within the selected range that the buy terminal, sell terminal and ship all accept (unit-tested).
+9. Every option line shows the commodity's allowed box sizes next to its name, without expanding.
+10. Every displayed haul shows (collapsed or expanded) buy price, sell price, profit, ROI, legal/illegal, quantity, box sizes and box breakdown, and price age.
+11. Layout has no horizontal scroll at 360 px width; all interactive touch targets ≥ 44 px; badges ≤ 20 px tall; warm-white amber theme as in §7.1; the CALCULATE TRADES button and tab bar are centered in the content column at 360, 820 and 1440 px width.
 12. Unit-test coverage for `src/calc/**` and `src/api/mappers.ts` ≥ 90 % lines.
 13. Reported inventory never removes, caps or re-ranks a trade: a haul whose buy row has `status_buy = 1` and `scu_buy = 0` still appears with full `qtyMax` and a `NO STOCK?` badge (unit-tested).
 
@@ -503,9 +529,9 @@ Dark UI with amber highlights, modeled on night-lit commercial avionics: near-bl
 - `mappers`: numeric strings, `"null"`/`""` CSV handling, 0/1 booleans, ignoring non-standard box sizes.
 - `maxFillable`: `(46,{1,2,4,8,16}) = 46`, `(46,{8,16}) = 40`, `(7,{8,16}) = 0`, `(30,{24}) = 24`.
 - Candidate generation: excludes raw, non-positive margin, empty box sets; inventory statuses only set warning flags (never exclude or cap).
-- Loads: greedy fill of leftover space when box granularity leaves a gap (46 SCU, best commodity in {8,16} → 40 + 6 of next best).
-- Plan DP: §6.5 counter-example; non-overlap; top-K ordering and distinctness; skip handling; segment capacity never exceeded.
-- Capital-required simulation.
+- Box range: `{min 4, max 16}` with buy sizes `1,2,4,8,16,24,32` → B = {4,8,16}; buy sizes `1,2` with min 4 → dropped as `boxTooSmall`; sell row sizes narrow B; 46 SCU with B = {4,8,16} → 44 SCU, 2 unused.
+- Per-stop grouping: lines grouped by buy stop, one line per (commodity, sell stop), last stop empty, all four sort orders descending with the specified tie-break.
+- Terminal secondary line: the examples table in §7.4.
 - Cache: TTL expiry, stale-while-revalidate, gameVersion invalidation, IndexedDB-unavailable fallback (mock).
 - Autocomplete ranking and tokenization cases from criterion 3 (use small fixture terminals).
 
@@ -538,8 +564,8 @@ Test fixtures: create small hand-written JSON fixtures in `src/__fixtures__/` sh
 |---|---|---|
 | Reported inventory (`scu_buy`, `scu_sell`, `scu_sell_stock`, `status_*`) lags behind the game and is partly contradictory; `scu_sell` is 0 in ~88 % of sell rows and its semantics are undocumented | Trades may hit empty stock or full demand in game | **Product decision:** inventory never filters or caps; shown as `NO/LOW STOCK?` and `NO/LOW DEMAND?` warnings with reported values and age. The player checks the terminal in game. |
 | 13 price rows with empty `container_sizes`; 33 terminals with `max_container_size = 0` | Box filtering uncertain | Fallback chain in §6.3 + `boxSizesUnknown` flag |
-| ~15 cargo ships (Hull D/E, Kraken, Galaxy, Idris-P …) have no `container_sizes` | Can't infer max box | Max-box override control, defaults to 32 with notice |
-| Ship cargo grids are physical 3D grids; a total SCU can't always be packed with any box mix | Plans may be slightly optimistic | Out of scope; box override lets the user be conservative |
+| ~15 cargo ships (Hull D/E, Kraken, Galaxy, Idris-P …) have no `container_sizes` | Can't infer max box | Box range slider, defaults to 4–32 with notice |
+| Ship cargo grids are physical 3D grids; a total SCU can't always be packed with any box mix | Quantities may be slightly optimistic | Out of scope; the box range lets the user be conservative |
 | Prices are crowdsourced; median age ~2 days, some > 2 weeks | Profit estimates may be wrong | Always show age; `STALE` badge > 7 days; optional max-age filter |
 | `kind` field is inconsistent (`Man-made` vs `Man-Made`, `Minteral`) | None (not used for logic) | Display only |
 | Numeric fields sometimes strings | Possible bugs | Mandatory coercion in mappers |
@@ -549,8 +575,8 @@ Test fixtures: create small hand-written JSON fixtures in `src/__fixtures__/` sh
 ### 9.3 Assumptions made (decide-by-default; change if the product owner disagrees)
 
 1. **Stops are terminals**, not locations. A station with several commodity terminals requires picking the terminal. (Alternative: let a stop be a location and merge all its commodity terminals.)
-2. **One free-SCU value** for the whole route. Real missions often load/unload mission cargo along the way, which changes free space per segment. The DP in §6.5 extends easily: build `load(i,j)` with the smallest free space over segments i…j−1 instead of C. That makes a per-segment override a small v1.1 addition.
-3. **No aUEC budget limit**. Plans show "capital required" instead of constraining it.
+2. **One free-SCU value** for the whole route. Real missions often load/unload mission cargo along the way, which changes free space per segment. A per-segment override would size each haul i→j by the smallest free space over segments i…j−1 instead of C (a small v1.1 addition).
+3. **No aUEC budget limit**. Each line shows its investment instead.
 4. **Illegal commodities included by default** (badged).
 5. **Quantum-volatile commodities excluded by default**, because a hauling route always involves quantum travel.
 6. Deployment target is the local `app` container only (no hosting/CI defined).
@@ -567,6 +593,7 @@ All information required by the stated v1.0 feature set is available from public
 - Location-level stops (merge terminals at the same station/city).
 - Travel distance and profit/hour via `terminals_distances` (cached per pair).
 - aUEC budget constraint.
-- Optional user-entered stock/demand caps observed at the terminal ("only 20 SCU available here"). This would make plans capacity-constrained per offer; plan optimization would then need a min-cost-flow formulation instead of the DP in §6.5.
+- Split-load helper: tap a line to enter the SCU actually bought (e.g. stock limit at the terminal), and the stop's other lines recompute profit for the remaining space.
+- Cargo-on-board tracking / route plans (removed in revision 2 in favour of per-stop lists). Brought back with user-entered stock limits, plan optimization would need a min-cost-flow formulation.
 - PWA install + offline shell.
 - Share route via URL (encode terminal ids).
