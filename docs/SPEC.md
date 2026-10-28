@@ -6,6 +6,8 @@ This document is the single source of truth for implementing v1.0. It is written
 
 ### Revision history
 
+**Revision 8 (2026-10-28)** — full screen toggle button in the header strip (§7.2) and acceptance criterion 15.
+
 **Revision 7 (2026-10-28)** — the chevron in the Details button is an inline SVG, vertically centered with the label, instead of a text glyph that sat off-center (§7.5).
 
 **Revision 6 (2026-10-28)** — the details button returns, now as a bordered, labelled `DETAILS ⌄` button in normal flow at the right of row 1 (§7.5):
@@ -446,7 +448,15 @@ These values are a starting point. Tune them in the browser to match the warm-wh
 - Touch targets ≥ 44×44 px for interactive elements; primary actions reachable by thumb (bottom area). Purely informational elements (badges) are not touch targets and stay small (§7.5).
 - Sticky bottom elements (tab bar, CALCULATE TRADES button) are laid out inside the same centered content column as the page (max-width 820 px), so they stay centered at every viewport width. Never position them relative to the viewport's left edge.
 - Three views switched by a **bottom tab bar**: `SHIP` · `ROUTE` · `TRADES`. The selected tab and all inputs persist across reloads (Zustand `persist`, key `shc:v1`).
-- Header strip: app name "HAULING COMPANION", data status pill (e.g. `PRICES 12m · LIVE 4.10.2`), refresh icon button.
+- Header strip: app name "HAULING COMPANION", data status pill (e.g. `PRICES 12m · LIVE 4.10.2`), refresh icon button, **full screen button**.
+- **Full screen button** (rightmost in the header, after refresh):
+  - **Look:** an icon button with the same style and ≥ 44 px hit area as the refresh button. It uses inline SVG icons: "expand" (four outward corners) when windowed, "collapse" (four inward corners) when in full screen.
+  - **Labels:** `aria-label` "Enter full screen" / "Exit full screen" and `aria-pressed`, plus a matching `title` tooltip.
+  - **Behaviour:** it toggles the Fullscreen API on `document.documentElement` — `requestFullscreen({ navigationUI: "hide" })` / `document.exitFullscreen()`. Fall back to the `webkit`-prefixed methods (older iPadOS Safari).
+  - **State:** the icon follows `fullscreenchange` / `webkitfullscreenchange`, because the user can also leave full screen with Esc or a system gesture. The state is not persisted, since browsers only allow entering full screen from a user gesture.
+  - **Unsupported browsers:** when neither `document.fullscreenEnabled` nor `document.webkitFullscreenEnabled` is true (notably iPhone Safari), the button is **not rendered**. Feature-detect it; never sniff the user agent.
+  - **Failures:** a rejected request (e.g. a permissions policy in an embedding iframe) is caught silently. The button stays in its windowed state and nothing breaks.
+  - **Layout:** in full screen the layout is unchanged. Sticky bottom elements keep `env(safe-area-inset-bottom)` padding.
 - Footer (in SHIP view): "Data: UEX Corp (uexcorp.space) · community-sourced, may be inaccurate · Not affiliated with Cloud Imperium Games."
 
 ### 7.3 SHIP view
@@ -631,6 +641,7 @@ interface BoughtLine {
     - Departing collapses the stop and shows each bought line as a sell reminder at its sell stop. Undo restores the previous state.
     - After the last departure, `COMPLETE ROUTE` clears the stops and opens ROUTE.
     - Trip progress survives a page reload and resets when the route is edited.
+15. The header's full screen button enters and leaves full screen. Its icon and label follow the real state, including leaving with Esc. It is absent where the Fullscreen API is unavailable. Unit-tested with a mocked Fullscreen API: supported, unsupported, and rejected request.
 
 ### 8.1 Required unit tests (minimum)
 
