@@ -6,6 +6,12 @@ This document is the single source of truth for implementing v1.0. It is written
 
 ### Revision history
 
+**Revision 4 (2026-10-28)** — **trip mode** (§7.6):
+- Tap a line at the current stop to mark it as bought (light-green highlight + ✓). Details move to a separate chevron button.
+- `DEPART →` button: top-right of the stop header on wide screens, under the list on mobile. Departing collapses the stop and turns bought lines into sell reminders at their sell stops. Undo is available for the last departure.
+- `COMPLETE ROUTE ✓` after the last stop clears the stops and opens ROUTE.
+- Changes in §7.1 (`--sel`, `--sel-bg` tokens), §7.5 (line interaction), §8 (criterion 14, tests).
+
 **Revision 3 (2026-10-28)** — buy and sell price per SCU are shown on the collapsed option line, not only when expanded (§7.5, §8 criterion 10). The sell stop's short name is the terminal `nickname`, as already implemented.
 
 **Revision 2 (2026-10-28)** — product owner review of the first implementation, merged with the implementer's report:
@@ -414,6 +420,8 @@ Dark UI modeled on a Boeing 747 flight deck at night: near-black panels lit by *
 | `--amber-faint` | `#5e4a2c` | **disabled controls only** (fails AA for text, so never use it for readable text or placeholders) |
 | `--warn` | `#ff7a4d` | ILLEGAL badge, inventory warnings, errors, stale data |
 | `--ok` | `#d9cf8f` | positive/OK status (stays within the warm-white family) |
+| `--sel` | `#b5e08f` | "bought" selection: border, ✓, commodity name, sell-reminder border (light green with the same lightness as `--amber`) |
+| `--sel-bg` | `rgba(181,224,143,0.12)` | background of bought lines |
 
 These values are a starting point. Tune them in the browser to match the warm-white look, keeping the contrast ratios above.
 
@@ -485,7 +493,7 @@ These values are a starting point. Tune them in the browser to match the warm-wh
   - Header: stop number + terminal display (§7.4).
   - Body: the buy options for that stop (§6.5) as a compact list. Show the top 5; a "Show N more" button expands the rest.
   - A stop with no options says "Nothing profitable to buy here". The last stop says "Final stop — sell only".
-- **Option line** (collapsed, up to three text rows, whole line is the ≥ 44 px touch target):
+- **Option line** (collapsed, up to three text rows). **At the current stop, tapping the line toggles it as bought** (§7.6). It is a toggle button (`aria-pressed`), ≥ 44 px tall. Details open with a separate button (see Expanded line). Contents:
   - Commodity name, followed directly by its **allowed box sizes** (e.g. `Laranite □ 4·8·16`) and small badges.
   - `→ #3 TDD Area 18` — sell stop number + short terminal name (`nickname`, falling back to `displayname`), plus a `SKIPS 1` badge when it skips stops.
   - **Buy and sell price per SCU**, always visible without expanding: `BUY 2,810 → SELL 3,315 /SCU`. Labels in `--amber-dim`, values in `--amber`, tabular numerals.
@@ -497,7 +505,7 @@ These values are a starting point. Tune them in the browser to match the warm-wh
     → #3 TDD Area 18  [SKIPS 1]        +22,220 aUEC
     BUY 2,810 → SELL 3,315 /SCU             18.0 %
     ```
-- **Expanded line** (tap to toggle):
+- **Expanded line**, toggled by a details button (chevron `⌄`/`⌃`, `aria-expanded`). The button sits at the right end of the first row, has a ≥ 44 × 44 px hit area, and a tap on it does **not** toggle "bought". Content:
   - Margin/SCU (buy and sell price are already on the collapsed line).
   - Quantity (`44 of 46 SCU`, plus "2 SCU unused · min box 4" when applicable) and the box breakdown with count.
   - Investment, revenue, profit, ROI.
@@ -510,7 +518,67 @@ These values are a starting point. Tune them in the browser to match the warm-wh
 - Number format: `en-US` grouping (`1,234,567`) with unit `aUEC`; on narrow cards MAY use compact (`1.23M`) with full value in `title`/expand. Percentages 1 decimal.
 - All results recompute synchronously (memoized) on any input change; no "calculate" round-trip to the API.
 
-### 7.6 Accessibility and robustness
+### 7.6 Trip mode (TRADES view while flying the route)
+
+The TRADES view doubles as an in-flight checklist: the player marks what they bought, departs each stop, and sees where to sell.
+
+**State** (persisted with the rest of the app state, so a reload mid-flight keeps progress):
+
+```ts
+interface TripState {
+  currentStop: number;              // index of the first stop not yet departed (0 at start)
+  bought: BoughtLine[];             // lines marked as bought, in the order they were marked
+}
+interface BoughtLine {
+  key: string;                      // `${buyStop}:${commodityId}:${sellStop}`
+  buyStop: number; sellStop: number; commodityId: number;
+  // snapshot at the moment of marking, so reminders survive price refreshes:
+  commodityName: string; unitBuy: number; unitSell: number; boxSizes: number[]; illegal: boolean;
+}
+```
+
+- A stop `k` is **departed** iff `k < currentStop`.
+- Lines are only markable at the **current stop**. Lines at later stops stay visible for planning but are not toggles; they show the details button only.
+- Trip state resets to `{currentStop: 0, bought: []}` whenever the route's stop list changes (add, remove, reorder, reverse, clear). The ROUTE view warns with an inline note while a trip is in progress: "Editing the route resets trip progress (at stop 3 of 7)".
+
+**Marking a line as bought** (tap on an option line at the current stop):
+
+- It toggles the line's membership in `bought` and takes the snapshot.
+- Several lines can be marked: split loads, several commodities, or the same commodity to two sell stops.
+- Bought lines get a light-green highlight that matches the amber's lightness, and **also** a ✓ check mark at the start of the first row, so the state is not shown by colour alone.
+  - New tokens in §7.1: `--sel` `#b5e08f` (relative luminance ≈ 0.65, like `--amber` ≈ 0.67) for the line border (thickened to 2 px), the ✓ and the commodity name; `--sel-bg` `rgba(181,224,143,0.12)` for the line background.
+  - Text colours inside the line stay as they are.
+- Bought lines stay in their ranked position and are always shown, even if they fall outside the top 5 ("Show N more").
+- If a price refresh makes a bought line disappear from the results, keep showing it from its snapshot at its old position, with an `UPDATED PRICES` note.
+
+**Depart button** (only on the current stop, never on the last stop):
+
+- Label `DEPART →`. Normal button styling, ≥ 44 px.
+- **Position:** at ≥ 600 px it sits at the right end of the stop header (where the red circle is in the product owner's screenshot). Below 600 px it moves under the stop's list (after "Show N more" and the sell reminders), full column width.
+- **On tap:**
+  1. `currentStop` becomes `k + 1`.
+  2. Stop `k` **collapses** to its header with a `DEPARTED` tag and a one-line summary, e.g. `Bought Scrap, Steel · Sold Waste`. Tapping a departed header expands it read-only (no toggles, no Depart button).
+  3. Every line bought at `k` appears as a **sell reminder** at its sell stop.
+  4. The view scrolls the new current stop's header into view.
+- **Undo:** the most recently departed stop's header shows an `UNDO` button for as long as it is the most recent. It moves `currentStop` back by one and keeps its bought lines.
+
+**Sell reminders** (at stop `j`, shown above that stop's buy list, under the heading `SELL HERE`):
+
+- One reminder per bought line with `sellStop = j`.
+- Format: `✓ Scrap · bought #2 Everus Harbor @ 2,954 → sell @ 3,600 /SCU`, plus the `ILLEGAL` badge if applicable. Styling: `--sel` left border, no fill.
+- Reminders at stops that are not the current stop are shown dimmed (still upcoming).
+- Departing stop `j` ends its reminders; they are counted as "Sold" in the departed summary.
+
+**Current stop emphasis:** the current stop's section has a 2 px `--amber` border. The summary header shows `AT STOP k OF n`, plus `ON BOARD:`, which lists bought lines from departed stops that are not yet sold (`Scrap → #3, Steel → #7`).
+
+**Complete route** (after the last stop's section, once `currentStop = n − 1`, i.e. every earlier stop is departed):
+
+- Full-width button `COMPLETE ROUTE ✓`.
+- On tap: clear the route's stops, reset trip state, switch to the ROUTE view.
+- Ship, free SCU, box range and filters are kept.
+- No confirmation dialog, because the user explicitly finishes the route here.
+
+### 7.7 Accessibility and robustness
 
 - Semantic HTML, labelled inputs, combobox ARIA pattern for autocomplete, focus visible (amber ring).
 - Works offline after first load (data from cache) — a service worker/PWA is **MAY** (not required).
@@ -533,6 +601,12 @@ These values are a starting point. Tune them in the browser to match the warm-wh
 11. Layout has no horizontal scroll at 360 px width; all interactive touch targets ≥ 44 px; badges ≤ 20 px tall; warm-white amber theme as in §7.1; the CALCULATE TRADES button and tab bar are centered in the content column at 360, 820 and 1440 px width.
 12. Unit-test coverage for `src/calc/**` and `src/api/mappers.ts` ≥ 90 % lines.
 13. Reported inventory never removes, caps or re-ranks a trade: a haul whose buy row has `status_buy = 1` and `scu_buy = 0` still appears with full `qtyMax` and a `NO STOCK?` badge (unit-tested).
+14. Trip mode (§7.6):
+    - Tapping a line at the current stop toggles a green highlight plus ✓. The details chevron opens details without toggling.
+    - Depart sits top-right in the stop header at ≥ 600 px and under the list at < 600 px.
+    - Departing collapses the stop and shows each bought line as a sell reminder at its sell stop. Undo restores the previous state.
+    - After the last departure, `COMPLETE ROUTE` clears the stops and opens ROUTE.
+    - Trip progress survives a page reload and resets when the route is edited.
 
 ### 8.1 Required unit tests (minimum)
 
@@ -542,6 +616,7 @@ These values are a starting point. Tune them in the browser to match the warm-wh
 - Box range: `{min 4, max 16}` with buy sizes `1,2,4,8,16,24,32` → B = {4,8,16}; buy sizes `1,2` with min 4 → dropped as `boxTooSmall`; sell row sizes narrow B; 46 SCU with B = {4,8,16} → 44 SCU, 2 unused.
 - Per-stop grouping: lines grouped by buy stop, one line per (commodity, sell stop), last stop empty, all four sort orders descending with the specified tie-break.
 - Terminal secondary line: the examples table in §7.4.
+- Trip state as pure reducer functions (e.g. `src/trip/tripReducer.ts`): toggle bought (only at the current stop), depart, undo, complete, reset on route change, reminders per stop, on-board list, snapshot survival when a line disappears from the results.
 - Cache: TTL expiry, stale-while-revalidate, gameVersion invalidation, IndexedDB-unavailable fallback (mock).
 - Autocomplete ranking and tokenization cases from criterion 3 (use small fixture terminals).
 
