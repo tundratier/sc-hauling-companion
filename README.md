@@ -64,3 +64,7 @@ git flow release finish $v   # tags $v on master, merges back to develop
 If git-cliff complains about "dubious ownership", add
 `-e GIT_CONFIG_PARAMETERS="'safe.directory=*'"` to the `docker run` call. The first release is
 `1.0.0` (`initial_tag` in `cliff.toml`).
+
+## License
+
+[MIT](LICENSE) © 2026 Tundratier
