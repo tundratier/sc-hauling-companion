@@ -1,3 +1,4 @@
+import { FullscreenButton } from './FullscreenButton'
 import { Icon } from './Icon'
 
 interface HeaderProps {
@@ -37,6 +38,7 @@ export function Header({
           <Icon name="refresh" />
         </button>
       )}
+      <FullscreenButton />
     </header>
   )
 }
