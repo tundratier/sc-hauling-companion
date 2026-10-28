@@ -145,7 +145,22 @@ export function OptionLine({
             setOpen(!open)
           }}
         >
-          {open ? 'HIDE ⌃' : 'DETAILS ⌄'}
+          <span>{open ? 'HIDE' : 'DETAILS'}</span>
+          <svg
+            className="option__details-icon"
+            width="12"
+            height="12"
+            viewBox="0 0 12 12"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+            focusable="false"
+          >
+            <path d="M2 4.25 6 8.25 10 4.25" />
+          </svg>
         </button>
       </div>
 

@@ -263,12 +263,14 @@ describe('price refreshes and persistence', () => {
 describe('details button (spec rev 6)', () => {
   const details = (el: HTMLElement) => within(el).getByRole('button', { name: /details for/i })
 
-  it('gives every line a labelled DETAILS ⌄ button, at every stop', () => {
+  it('gives every line a labelled DETAILS button with a chevron icon, at every stop', () => {
     render(<TradesView />)
     for (const n of [1, 2, 3]) {
       for (const l of lines(n)) {
         const b = details(l)
-        expect(b).toHaveTextContent('DETAILS ⌄')
+        expect(b).toHaveTextContent('DETAILS')
+        expect(b.textContent).not.toMatch(/[⌄⌃^v]$/) // the chevron is an SVG, not a text glyph
+        expect(b.querySelector('svg')).toHaveAttribute('aria-hidden', 'true')
         expect(b).toHaveAttribute('aria-expanded', 'false')
         expect(b).toHaveAttribute('aria-controls')
       }
@@ -295,12 +297,12 @@ describe('details button (spec rev 6)', () => {
     const scrap = line(1, 'Scrap', 3)
     await user.click(toggle(scrap))
     await user.click(details(scrap))
-    expect(details(scrap)).toHaveTextContent('HIDE ⌃')
+    expect(details(scrap)).toHaveTextContent('HIDE')
     expect(details(scrap)).toHaveAttribute('aria-expanded', 'true')
     expect(within(scrap).getByText('Margin / SCU')).toBeInTheDocument()
     await user.click(details(scrap))
     expect(within(scrap).queryByText('Margin / SCU')).not.toBeInTheDocument()
-    expect(details(scrap)).toHaveTextContent('DETAILS ⌄')
+    expect(details(scrap)).toHaveTextContent('DETAILS')
     expect(scrap).toHaveClass('option--bought')
     expect(toggle(scrap)).toHaveAttribute('aria-pressed', 'true')
     expect(useAppStore.getState().trip.bought).toHaveLength(1)

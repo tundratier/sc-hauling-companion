@@ -1035,6 +1035,9 @@ select.input:disabled {
 
 .option__details-btn {
   position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   justify-self: end;
   align-self: start;
   margin: 8px 10px 0 0;
@@ -1066,4 +1069,18 @@ select.input:disabled {
 
 .option__details-btn[aria-expanded='true'] {
   background: var(--line);
+}
+
+/* Same inline SVG chevron as the dropdowns: 12 × 12, currentColor, centered by the flex row;
+   rotated 180° while the details are open. */
+.option__details-icon {
+  display: block;
+  flex: none;
+  width: 12px;
+  height: 12px;
+  transition: transform var(--transition);
+}
+
+.option__details-btn[aria-expanded='true'] .option__details-icon {
+  transform: rotate(180deg);
 }
