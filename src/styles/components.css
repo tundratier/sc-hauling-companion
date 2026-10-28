@@ -999,3 +999,18 @@
 .reminder .badge {
   margin-left: 6px;
 }
+
+/* One shared dropdown style: the chevron's right edge sits 14 px inside the border and the
+   text keeps ≥ 8 px of distance (padding-inline-end 40 px). */
+select.input {
+  appearance: none;
+  padding-inline-end: 40px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5 11 1.5' fill='none' stroke='%23c99a58' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  background-size: 12px 8px;
+}
+
+select.input:disabled {
+  opacity: 0.5;
+}
