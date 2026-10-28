@@ -6,6 +6,8 @@ This document is the single source of truth for implementing v1.0. It is written
 
 ### Revision history
 
+**Revision 5 (2026-10-28)** — the details chevron on option lines is removed, because it was unclear and overlapped the profit. Bought lines now show their details automatically, and lines that can't be marked expand on tap (§7.5, §7.6). Dropdown chevrons get proper inner spacing (§7.7).
+
 **Revision 4 (2026-10-28)** — **trip mode** (§7.6):
 - Tap a line at the current stop to mark it as bought (light-green highlight + ✓). Details move to a separate chevron button.
 - `DEPART →` button: top-right of the stop header on wide screens, under the list on mobile. Departing collapses the stop and turns bought lines into sell reminders at their sell stops. Undo is available for the last departure.
@@ -493,7 +495,7 @@ These values are a starting point. Tune them in the browser to match the warm-wh
   - Header: stop number + terminal display (§7.4).
   - Body: the buy options for that stop (§6.5) as a compact list. Show the top 5; a "Show N more" button expands the rest.
   - A stop with no options says "Nothing profitable to buy here". The last stop says "Final stop — sell only".
-- **Option line** (collapsed, up to three text rows). **At the current stop, tapping the line toggles it as bought** (§7.6). It is a toggle button (`aria-pressed`), ≥ 44 px tall. Details open with a separate button (see Expanded line). Contents:
+- **Option line** (collapsed, up to three text rows). **At the current stop, tapping the line toggles it as bought** (§7.6). It is a toggle button (`aria-pressed`), ≥ 44 px tall. There is **no** separate details/chevron button on the line. Contents:
   - Commodity name, followed directly by its **allowed box sizes** (e.g. `Laranite □ 4·8·16`) and small badges.
   - `→ #3 TDD Area 18` — sell stop number + short terminal name (`nickname`, falling back to `displayname`), plus a `SKIPS 1` badge when it skips stops.
   - **Buy and sell price per SCU**, always visible without expanding: `BUY 2,810 → SELL 3,315 /SCU`. Labels in `--amber-dim`, values in `--amber`, tabular numerals.
@@ -505,7 +507,11 @@ These values are a starting point. Tune them in the browser to match the warm-wh
     → #3 TDD Area 18  [SKIPS 1]        +22,220 aUEC
     BUY 2,810 → SELL 3,315 /SCU             18.0 %
     ```
-- **Expanded line**, toggled by a details button (chevron `⌄`/`⌃`, `aria-expanded`). The button sits at the right end of the first row, has a ≥ 44 × 44 px hit area, and a tap on it does **not** toggle "bought". Content:
+- **Expanded line** — the details are shown, below the three rows, in these cases:
+  - **Bought lines** at the current stop are expanded automatically: marking a line shows what to load, unmarking collapses it again.
+  - Lines that are **not toggles** (later stops, and departed stops viewed read-only) expand and collapse when the line is tapped (`aria-expanded`).
+  
+  Content:
   - Margin/SCU (buy and sell price are already on the collapsed line).
   - Quantity (`44 of 46 SCU`, plus "2 SCU unused · min box 4" when applicable) and the box breakdown with count.
   - Investment, revenue, profit, ROI.
@@ -538,7 +544,7 @@ interface BoughtLine {
 ```
 
 - A stop `k` is **departed** iff `k < currentStop`.
-- Lines are only markable at the **current stop**. Lines at later stops stay visible for planning but are not toggles; they show the details button only.
+- Lines are only markable at the **current stop**. Lines at later stops stay visible for planning but are not toggles; tapping them only expands/collapses their details.
 - Trip state resets to `{currentStop: 0, bought: []}` whenever the route's stop list changes (add, remove, reorder, reverse, clear). The ROUTE view warns with an inline note while a trip is in progress: "Editing the route resets trip progress (at stop 3 of 7)".
 
 **Marking a line as bought** (tap on an option line at the current stop):
@@ -581,6 +587,7 @@ interface BoughtLine {
 ### 7.7 Accessibility and robustness
 
 - Semantic HTML, labelled inputs, combobox ARIA pattern for autocomplete, focus visible (amber ring).
+- **Dropdown indicators** (sort `<select>` and any other select/combobox with a chevron): the chevron's right edge sits 14–16 px inside the control's border, with ≥ 8 px gap to the text (`padding-inline-end` ≥ 40 px). It is never flush with the edge. Use one shared style for all of them.
 - Works offline after first load (data from cache) — a service worker/PWA is **MAY** (not required).
 - Handle API schema surprises defensively: unknown/missing fields must not crash; drop malformed records and `console.warn` once per dataset.
 
@@ -602,7 +609,7 @@ interface BoughtLine {
 12. Unit-test coverage for `src/calc/**` and `src/api/mappers.ts` ≥ 90 % lines.
 13. Reported inventory never removes, caps or re-ranks a trade: a haul whose buy row has `status_buy = 1` and `scu_buy = 0` still appears with full `qtyMax` and a `NO STOCK?` badge (unit-tested).
 14. Trip mode (§7.6):
-    - Tapping a line at the current stop toggles a green highlight plus ✓. The details chevron opens details without toggling.
+    - Tapping a line at the current stop toggles a green highlight plus ✓ and shows its details; lines have no chevron/details button.
     - Depart sits top-right in the stop header at ≥ 600 px and under the list at < 600 px.
     - Departing collapses the stop and shows each bought line as a sell reminder at its sell stop. Undo restores the previous state.
     - After the last departure, `COMPLETE ROUTE` clears the stops and opens ROUTE.
