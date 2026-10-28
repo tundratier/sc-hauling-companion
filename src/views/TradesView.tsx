@@ -186,7 +186,7 @@ function TradesContent() {
               className="input"
               value={sort}
               onChange={(e) => {
-                setSort(e.target.value as HaulSortKey)
+                setSort(SORTS.find((s) => s.key === e.target.value)?.key ?? 'profit')
                 setShown(PAGE_SIZE)
               }}
             >

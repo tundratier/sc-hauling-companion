@@ -4,10 +4,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const idb = vi.hoisted(() => ({ store: new Map<string, unknown>() }))
 vi.mock('idb-keyval', () => ({
-  get: vi.fn(async (key: string) => idb.store.get(key)),
-  set: vi.fn(async (key: string, value: unknown) => {
-    idb.store.set(key, value)
-  }),
+  get: vi.fn<(key: string) => Promise<unknown>>(async (key: string) => idb.store.get(key)),
+  set: vi.fn<(key: string, value: unknown) => Promise<void>>(
+    async (key: string, value: unknown) => {
+      idb.store.set(key, value)
+    },
+  ),
 }))
 
 import { resetMemoryCache } from '../api/cache'
@@ -73,7 +75,7 @@ describe('data store orchestration', () => {
   })
 
   it('shows a blocking error when nothing is cached and the network fails', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('offline')))
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockRejectedValue(new TypeError('offline')))
     await useDataStore.getState().initStatic()
     expect(useDataStore.getState()).toMatchObject({
       staticStatus: 'error',
@@ -86,7 +88,7 @@ describe('data store orchestration', () => {
     installMockFetch()
     await useDataStore.getState().initStatic()
     await useDataStore.getState().ensurePrices()
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('offline')))
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockRejectedValue(new TypeError('offline')))
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(Date.now() + 5 * 60_000)
     await useDataStore.getState().refreshPrices()
@@ -109,7 +111,7 @@ describe('data store orchestration', () => {
   })
 
   it('reloadAll with no cache and a failing network reports a blocking error', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('offline')))
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockRejectedValue(new TypeError('offline')))
     await useDataStore.getState().reloadAll()
     expect(useDataStore.getState().staticStatus).toBe('error')
   })
@@ -117,7 +119,7 @@ describe('data store orchestration', () => {
   it('a failed price fetch without cache is a blocking prices error', async () => {
     installMockFetch()
     await useDataStore.getState().initStatic()
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('offline')))
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockRejectedValue(new TypeError('offline')))
     await useDataStore.getState().ensurePrices()
     expect(useDataStore.getState()).toMatchObject({
       pricesStatus: 'error',
@@ -183,7 +185,7 @@ describe('App wiring', () => {
     const user = userEvent.setup()
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue(json({ status: 'error', http_code: 500 }, 500)),
+      vi.fn<typeof fetch>().mockResolvedValue(json({ status: 'error', http_code: 500 }, 500)),
     )
     render(<App />)
     expect(await screen.findByRole('alert')).toHaveTextContent('Could not load data')

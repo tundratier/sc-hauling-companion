@@ -22,7 +22,11 @@ export function toBool(value: unknown): boolean {
 }
 
 export function toStr(value: unknown): string {
-  return value === null || value === undefined ? '' : String(value)
+  return typeof value === 'string'
+    ? value
+    : typeof value === 'number' || typeof value === 'boolean'
+      ? String(value)
+      : ''
 }
 
 function toOptStr(value: unknown): string | null {

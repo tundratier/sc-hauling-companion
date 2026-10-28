@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { installMockFetch, json } from '../test-utils/mockFetch'
+import { installMockFetch, json, urlOf } from '../test-utils/mockFetch'
 import { REQUEST_TIMEOUT_MS, UexError, fetchTerminals, uexGet } from './uexClient'
 
 afterEach(() => {
@@ -14,16 +14,14 @@ describe('uexGet', () => {
     )
     await expect(uexGet('x')).resolves.toEqual([1, 2])
     const [url, init] = mock.mock.calls[0]
-    expect(String(url)).toBe('https://api.uexcorp.uk/2.0/x')
+    expect(urlOf(url)).toBe('https://api.uexcorp.uk/2.0/x')
     expect(init?.headers).toEqual({ Accept: 'application/json' })
   })
 
   it('keeps query strings', async () => {
     const mock = installMockFetch()
     await fetchTerminals()
-    expect(String(mock.mock.calls[0][0])).toBe(
-      'https://api.uexcorp.uk/2.0/terminals?type=commodity',
-    )
+    expect(urlOf(mock.mock.calls[0][0])).toBe('https://api.uexcorp.uk/2.0/terminals?type=commodity')
   })
 
   it('throws an api error for status !== "ok"', async () => {
@@ -62,7 +60,10 @@ describe('uexGet', () => {
   })
 
   it('throws a network error when fetch rejects', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')))
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>().mockRejectedValue(new TypeError('Failed to fetch')),
+    )
     const error = await uexGet('x').catch((e) => e)
     expect(error).toBeInstanceOf(UexError)
     expect(error).toMatchObject({ kind: 'network', message: 'Failed to fetch' })
@@ -87,9 +88,9 @@ describe('uexGet', () => {
     it('times out after 15 s', async () => {
       vi.useFakeTimers()
       const promise = uexGet('x')
-      const assertion = expect(promise).rejects.toMatchObject({ kind: 'timeout' })
+      const result = promise.catch((e: unknown) => e)
       await vi.advanceTimersByTimeAsync(REQUEST_TIMEOUT_MS)
-      await assertion
+      expect(await result).toMatchObject({ kind: 'timeout' })
     })
 
     it('honours an external AbortSignal', async () => {

@@ -23,7 +23,7 @@ interface Envelope {
 }
 
 function asEnvelope(value: unknown): Envelope | null {
-  return typeof value === 'object' && value !== null ? (value as Envelope) : null
+  return typeof value === 'object' && value !== null ? value : null
 }
 
 /**

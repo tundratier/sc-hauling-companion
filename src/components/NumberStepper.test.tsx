@@ -20,7 +20,7 @@ function Controlled({ initial, min, max }: { initial: number; min: number; max: 
   return <NumberStepper label="Free" value={value} min={min} max={max} onChange={setValue} />
 }
 
-const input = () => screen.getByLabelText('Free') as HTMLInputElement
+const input = () => screen.getByLabelText<HTMLInputElement>('Free')
 
 describe('NumberStepper long press', () => {
   beforeEach(() => vi.useFakeTimers())

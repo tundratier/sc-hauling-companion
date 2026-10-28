@@ -29,8 +29,8 @@ describe('searchTerminals (criterion 3)', () => {
 
   it('"area18" finds every Area 18 terminal, distinguishable by name', () => {
     const result = searchTerminals(terminals, 'area18')
-    expect(ids(result).sort()).toEqual([11, 12])
-    expect(result.map((t) => t.name).sort()).toEqual([
+    expect(ids(result).sort((a, b) => a - b)).toEqual([11, 12])
+    expect(result.map((t) => t.name).sort((a, b) => a.localeCompare(b))).toEqual([
       'Admin - Area 18',
       'TDD - Trade and Development Division - Area 18',
     ])
@@ -38,7 +38,7 @@ describe('searchTerminals (criterion 3)', () => {
   })
 
   it('also matches "area 18" and "tdd area 18"', () => {
-    expect(ids(searchTerminals(terminals, 'area 18')).sort()).toEqual([11, 12])
+    expect(ids(searchTerminals(terminals, 'area 18')).sort((a, b) => a - b)).toEqual([11, 12])
     expect(ids(searchTerminals(terminals, 'tdd area 18'))).toEqual([11])
   })
 
@@ -56,7 +56,7 @@ describe('searchTerminals (criterion 3)', () => {
   it('matches location names (planet, moon, system, city)', () => {
     expect(ids(searchTerminals(terminals, 'wala'))).toEqual([13])
     expect(ids(searchTerminals(terminals, 'pyro'))).toEqual([14])
-    expect(ids(searchTerminals(terminals, 'yela')).sort()).toEqual([15, 16])
+    expect(ids(searchTerminals(terminals, 'yela')).sort((a, b) => a - b)).toEqual([15, 16])
   })
 
   describe('ranking', () => {

@@ -32,7 +32,12 @@ export function NumberStepper({ label, value, min, max, onChange }: NumberSteppe
     if (timer.current) clearTimeout(timer.current)
     timer.current = null
   }
-  useEffect(() => stop, [])
+  useEffect(
+    () => () => {
+      if (timer.current) clearTimeout(timer.current)
+    },
+    [],
+  )
 
   /** Returns false once a limit is reached (stops the hold-repeat). */
   const step = (dir: 1 | -1, size: number): boolean => {
