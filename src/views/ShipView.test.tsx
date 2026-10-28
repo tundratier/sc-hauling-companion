@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { UexError } from '../api/uexClient'
@@ -40,10 +40,17 @@ describe('ShipView', () => {
     const user = userEvent.setup()
     render(<ShipView />)
     await chooseShip(user, 'cutlass bl', 'Drake Cutlass Black')
-    expect(useAppStore.getState()).toMatchObject({ vehicleId: 100, freeScu: 46, maxBox: 16 })
+    expect(useAppStore.getState()).toMatchObject({
+      vehicleId: 100,
+      freeScu: 46,
+      boxMin: 4,
+      boxMax: 16,
+    })
     expect(screen.getByRole('combobox', { name: 'Ship' })).toHaveValue('Drake Cutlass Black')
     expect(screen.getByLabelText('Free cargo (SCU)')).toHaveValue('46')
-    expect(screen.getByRole('radio', { name: '16' })).toHaveAttribute('aria-checked', 'true')
+    expect(screen.getByRole('slider', { name: 'Maximum box size' })).toHaveValue('4') // index of 16
+    expect(screen.getByRole('slider', { name: 'Minimum box size' })).toHaveValue('2') // index of 4
+    expect(screen.getByText('4–16')).toBeInTheDocument()
   })
 
   it('shows secondary info in the option line', async () => {
@@ -71,7 +78,7 @@ describe('ShipView', () => {
     render(<ShipView />)
     await chooseShip(user, 'galaxy', 'RSI Galaxy')
     expect(screen.getByText(/Box sizes for this ship unknown/)).toBeInTheDocument()
-    expect(screen.getByRole('radio', { name: '32' })).toHaveAttribute('aria-checked', 'true')
+    expect(screen.getByRole('slider', { name: 'Maximum box size' })).toHaveValue('6') // index of 32
   })
 
   it('quick buttons set a percentage of the ship SCU', async () => {
@@ -105,11 +112,34 @@ describe('ShipView', () => {
     expect(screen.getByRole('button', { name: 'Decrease Free cargo (SCU)' })).toBeDisabled()
   })
 
-  it('changing the max box size updates the store immediately', async () => {
+  it('changing either end of the box range updates the store immediately', () => {
+    render(<ShipView />)
+    fireEvent.change(screen.getByRole('slider', { name: 'Maximum box size' }), {
+      target: { value: '3' },
+    })
+    expect(useAppStore.getState()).toMatchObject({ boxMin: 4, boxMax: 8 })
+    fireEvent.change(screen.getByRole('slider', { name: 'Minimum box size' }), {
+      target: { value: '1' },
+    })
+    expect(useAppStore.getState()).toMatchObject({ boxMin: 2, boxMax: 8 })
+  })
+
+  it('keeps min ≤ max and never lets max exceed the ship\x27s largest box', async () => {
     const user = userEvent.setup()
     render(<ShipView />)
-    await user.click(screen.getByRole('radio', { name: '4' }))
-    expect(useAppStore.getState().maxBox).toBe(4)
+    await chooseShip(user, 'cutlass bl', 'Drake Cutlass Black')
+    fireEvent.change(screen.getByRole('slider', { name: 'Maximum box size' }), {
+      target: { value: '6' },
+    })
+    expect(useAppStore.getState().boxMax).toBe(16)
+    fireEvent.change(screen.getByRole('slider', { name: 'Minimum box size' }), {
+      target: { value: '6' },
+    })
+    expect(useAppStore.getState()).toMatchObject({ boxMin: 16, boxMax: 16 })
+    fireEvent.change(screen.getByRole('slider', { name: 'Maximum box size' }), {
+      target: { value: '0' },
+    })
+    expect(useAppStore.getState()).toMatchObject({ boxMin: 16, boxMax: 16 })
   })
 
   it('has the filter toggles (illegal on, volatile off) and no stock/demand filters', async () => {

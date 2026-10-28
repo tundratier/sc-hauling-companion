@@ -23,8 +23,9 @@ export interface AppState {
   vehicleId: number | null
   /** Free cargo space C. */
   freeScu: number
-  /** User-chosen max box size (preselected from the ship), 1..32. */
-  maxBox: number
+  /** Box size range (standard sizes), preselected from the ship; min ≤ max. */
+  boxMin: number
+  boxMax: number
   showConceptShips: boolean
   includeIllegal: boolean
   includeVolatileQt: boolean
@@ -37,7 +38,7 @@ export interface AppState {
   setTab: (tab: Tab) => void
   selectVehicle: (vehicle: Vehicle | null) => void
   setFreeScu: (scu: number, shipScu?: number | null) => void
-  setMaxBox: (size: number) => void
+  setBoxRange: (min: number, max: number) => void
   setShowConceptShips: (v: boolean) => void
   setIncludeIllegal: (v: boolean) => void
   setIncludeVolatileQt: (v: boolean) => void
@@ -49,6 +50,9 @@ export interface AppState {
   reverseStops: () => void
   clearStops: () => void
 }
+
+/** Default box range: min 4 (nobody wants to load hundreds of 1-SCU boxes), max = ship's largest. */
+export const DEFAULT_BOX_MIN = 4
 
 /** Largest standard box the ship accepts; 32 when its sizes are unknown. */
 export const defaultMaxBox = (vehicle: Vehicle | null): number =>
@@ -68,7 +72,8 @@ export const useAppStore = create<AppState>()(
       tab: 'ship',
       vehicleId: null,
       freeScu: 32,
-      maxBox: 32,
+      boxMin: DEFAULT_BOX_MIN,
+      boxMax: 32,
       showConceptShips: false,
       includeIllegal: true,
       includeVolatileQt: false,
@@ -83,13 +88,13 @@ export const useAppStore = create<AppState>()(
             ? {
                 vehicleId: vehicle.id,
                 freeScu: clampFreeScu(vehicle.scu, vehicle.scu),
-                maxBox: defaultMaxBox(vehicle),
+                boxMin: Math.min(DEFAULT_BOX_MIN, defaultMaxBox(vehicle)),
+                boxMax: defaultMaxBox(vehicle),
               }
-            : { vehicleId: null, maxBox: 32 },
+            : { vehicleId: null, boxMin: DEFAULT_BOX_MIN, boxMax: 32 },
         ),
       setFreeScu: (scu, shipScu) => set({ freeScu: clampFreeScu(scu, shipScu) }),
-      setMaxBox: (size) =>
-        set({ maxBox: (STD_BOX_SIZES as readonly number[]).includes(size) ? size : 32 }),
+      setBoxRange: (min, max) => set(normalizeBoxRange(min, max)),
       setShowConceptShips: (showConceptShips) => set({ showConceptShips }),
       setIncludeIllegal: (includeIllegal) => set({ includeIllegal }),
       setIncludeVolatileQt: (includeVolatileQt) => set({ includeVolatileQt }),
@@ -118,7 +123,8 @@ export const useAppStore = create<AppState>()(
         tab: s.tab,
         vehicleId: s.vehicleId,
         freeScu: s.freeScu,
-        maxBox: s.maxBox,
+        boxMin: s.boxMin,
+        boxMax: s.boxMax,
         showConceptShips: s.showConceptShips,
         includeIllegal: s.includeIllegal,
         includeVolatileQt: s.includeVolatileQt,
@@ -129,3 +135,12 @@ export const useAppStore = create<AppState>()(
     },
   ),
 )
+
+/** Snap to the nearest standard size and order the ends (min ≤ max). */
+export function normalizeBoxRange(min: number, max: number): { boxMin: number; boxMax: number } {
+  const snap = (n: number) =>
+    STD_BOX_SIZES.reduce<number>((best, s) => (Math.abs(s - n) < Math.abs(best - n) ? s : best), 32)
+  const a = snap(min)
+  const b = snap(max)
+  return { boxMin: Math.min(a, b), boxMax: Math.max(a, b) }
+}

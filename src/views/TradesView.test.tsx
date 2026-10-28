@@ -36,7 +36,8 @@ function seed({ offers, commodities, stops = [1, 2, 3], ship = true, prices = tr
     stops,
     vehicleId: ship ? 100 : null,
     freeScu: 46,
-    maxBox: 16,
+    boxMin: 1,
+    boxMax: 16,
     tab: 'trades',
   })
   useDataStore.setState({
@@ -397,9 +398,14 @@ describe('single hauls', () => {
 
 describe('droppedLines', () => {
   it('pluralizes and skips zero counts', () => {
-    expect(droppedLines({ boxSize: 0, illegal: 0, volatileQt: 0, priceAge: 0 })).toEqual([])
-    expect(droppedLines({ boxSize: 2, illegal: 0, volatileQt: 0, priceAge: 3 })).toEqual([
+    expect(
+      droppedLines({ boxTooLarge: 0, boxTooSmall: 0, illegal: 0, volatileQt: 0, priceAge: 0 }),
+    ).toEqual([])
+    expect(
+      droppedLines({ boxTooLarge: 2, boxTooSmall: 1, illegal: 0, volatileQt: 0, priceAge: 3 }),
+    ).toEqual([
       '2 trades need bigger boxes than your ship takes',
+      '1 trade only comes in boxes smaller than your minimum',
       '3 hidden by the price-age filter',
     ])
   })
