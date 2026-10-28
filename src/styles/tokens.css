@@ -5,17 +5,17 @@
   --bg: #0a0907;
   --panel: #13110c;
   --panel-raised: #1c1910;
-  --line: #3a2e14;
-  --amber: #ffb000;
-  --amber-bright: #ffc94d;
-  /* 5.1:1 on --panel, 4.7:1 on --panel-raised (WCAG AA for body text) */
-  --amber-dim: #b07a10;
+  --line: #3d3220;
+  --amber: #ffcf7a;
+  --amber-bright: #ffe8c4;
+  /* ≈ 7:1 on --panel, ≈ 6.5:1 on --panel-raised; also used for placeholders */
+  --amber-dim: #c99a58;
   /* disabled / decorative only — below AA on purpose, never used for text people must read */
-  --amber-faint: #5c420c;
-  --warn: #ff6a3d;
-  --ok: #d6c36a;
+  --amber-faint: #5e4a2c;
+  --warn: #ff7a4d;
+  --ok: #d9cf8f;
 
-  --glow: 0 0 6px rgba(255, 176, 0, 0.35);
+  --glow: 0 0 6px rgba(255, 207, 122, 0.3);
   --ring: 0 0 0 2px var(--bg), 0 0 0 4px var(--amber);
 
   --font-mono: 'Share Tech Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
