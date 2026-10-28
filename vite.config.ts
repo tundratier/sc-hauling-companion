@@ -4,6 +4,8 @@ import { defineConfig } from 'vite'
 
 // https://vite.dev/config/
 export default defineConfig({
+  // GitHub Pages serves the app under /<repo>/; the Docker build passes it in.
+  base: process.env.BASE_PATH ?? '/',
   plugins: [react()],
   server: {
     // Windows bind mounts don't emit FS events; poll when running in Docker.

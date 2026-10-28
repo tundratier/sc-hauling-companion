@@ -34,6 +34,20 @@ docker compose run --rm test npm run test -- --run --coverage   # coverage repor
 docker compose run --rm dev npm run format                      # prettier
 ```
 
+## Deployment
+
+Every push to `master` (i.e. every git flow release or hotfix) runs
+[`.github/workflows/pages.yml`](.github/workflows/pages.yml): lint, typecheck and tests
+(`docker build --target check .`), then the static build (`--target dist`) is deployed to GitHub
+Pages. The repository's Pages source must be set to **GitHub Actions**. The URL prefix comes from
+the `BASE_PATH` build arg (default `/`), which the workflow sets from the Pages configuration.
+
+Reproduce the Pages build locally:
+
+```bash
+docker build --target dist --build-arg BASE_PATH=/sc-hauling-companion/ --output type=local,dest=dist .
+```
+
 ## Git workflow
 
 - git flow: production `master`, integration `develop`, prefixes `feature/`, `bugfix/`, `release/`,
@@ -64,3 +78,7 @@ git flow release finish $v   # tags $v on master, merges back to develop
 If git-cliff complains about "dubious ownership", add
 `-e GIT_CONFIG_PARAMETERS="'safe.directory=*'"` to the `docker run` call. The first release is
 `1.0.0` (`initial_tag` in `cliff.toml`).
+
+## License
+
+[MIT](LICENSE) © 2026 Tundratier

@@ -6,6 +6,8 @@ This document is the single source of truth for implementing v1.0. It is written
 
 ### Revision history
 
+**Revision 9 (2026-10-28)** — deployment to GitHub Pages on every push to `master` (§2.1, §9.3): `check` and `dist` Docker stages, `BASE_PATH` build arg mapped to Vite `base`.
+
 **Revision 8 (2026-10-28)** — full screen toggle button in the header strip (§7.2) and acceptance criterion 15.
 
 **Revision 7 (2026-10-28)** — the chevron in the Details button is an inline SVG, vertically centered with the label, instead of a text glyph that sat off-center (§7.5).
@@ -79,7 +81,9 @@ Files at repo root:
   - `base`: `node:24-alpine` (pin a concrete tag such as `node:24.x.y-alpine` at implementation time), `WORKDIR /app`.
   - `deps`: copy `package.json` + `package-lock.json`, `npm ci`.
   - `dev`: from `deps`, `CMD ["npm","run","dev","--","--host","0.0.0.0"]`, expose 5173.
-  - `build`: from `deps`, copy sources, `npm run build`.
+  - `check`: from `deps`, copy sources, `npm run lint && npm run typecheck && npm run test -- --run`.
+  - `build`: from `deps`, copy sources, `npm run build`. Build arg `BASE_PATH` (default `/`) becomes Vite's `base`.
+  - `dist`: `FROM scratch` with only `dist/`, for `docker build --target dist --output type=local,dest=dist .`.
   - `runtime`: `nginxinc/nginx-unprivileged:alpine` (pinned tag), copy `dist/` and `docker/nginx.conf`, expose 8080.
 - `docker/nginx.conf` — SPA fallback (`try_files $uri /index.html`), long `Cache-Control: immutable` for `/assets/*`, `no-cache` for `index.html`, gzip on.
 - `docker-compose.yml` — services:
@@ -88,6 +92,7 @@ Files at repo root:
   - `lint`: same image, command `npm run lint && npm run typecheck`.
   - `app`: build target `runtime`, port `8080:8080`.
 - `.dockerignore` (node_modules, dist, .git).
+- `.github/workflows/pages.yml` — on push to `master` (and manual dispatch): `actions/configure-pages`, `docker build --target check`, `docker build --target dist` with `BASE_PATH` = Pages base path + `/`, then `upload-pages-artifact` + `deploy-pages`. CI uses the same Dockerfile as local development, no runner-installed Node.
 - `.gitattributes` with `* text=auto eol=lf` (the repo is developed on Windows; container tooling expects LF).
 - `.gitignore` (node_modules, dist, coverage, .vite, *.local).
 
@@ -699,7 +704,7 @@ Test fixtures: create small hand-written JSON fixtures in `src/__fixtures__/` sh
 3. **No aUEC budget limit**. Each line shows its investment instead.
 4. **Illegal commodities included by default** (badged).
 5. **Quantum-volatile commodities excluded by default**, because a hauling route always involves quantum travel.
-6. Deployment target is the local `app` container only (no hosting/CI defined).
+6. Deployment target is GitHub Pages (static, from `master`); the local `app` container stays for testing the production build.
 
 ### 9.4 Verdict
 

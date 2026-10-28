@@ -4,7 +4,6 @@
 [changelog]
 header = """
 # Changelog
-
 """
 body = """
 {% if version -%}
@@ -20,7 +19,8 @@ body = """
 {% endfor %}
 """
 footer = ""
-trim = true
+# Untrimmed, so releases stay separated by a blank line.
+trim = false
 
 [git]
 conventional_commits = true
@@ -37,6 +37,9 @@ commit_parsers = [
   { message = "^feat", group = "<!-- 0 -->Features" },
   { message = "^fix", group = "<!-- 1 -->Bug Fixes" },
   { message = "^perf", group = "<!-- 2 -->Performance" },
+  # Listed for releases without user-facing changes; they never bump the version.
+  { message = "^(build|ci)", group = "<!-- 3 -->Build and CI" },
+  { message = "^chore", group = "<!-- 4 -->Miscellaneous" },
   { message = ".*", skip = true },
 ]
 
