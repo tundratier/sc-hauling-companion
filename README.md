@@ -15,7 +15,7 @@ build, dev, test, lint and scaffold command runs in a container.
 ```bash
 docker compose up dev            # dev server on http://localhost:5173 (hot reload)
 docker compose run --rm test     # unit tests
-docker compose run --rm lint     # lint + typecheck
+docker compose run --rm lint     # oxlint (type-aware) + TypeScript 7 typecheck
 docker compose up --build app    # production build on http://localhost:8080
 ```
 
