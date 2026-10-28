@@ -6,14 +6,16 @@ const idb = vi.hoisted(() => ({
 }))
 
 vi.mock('idb-keyval', () => ({
-  get: vi.fn(async (key: string) => {
+  get: vi.fn<(key: string) => Promise<unknown>>(async (key: string) => {
     if (idb.broken) throw new ReferenceError('indexedDB is not defined')
     return idb.store.get(key)
   }),
-  set: vi.fn(async (key: string, value: unknown) => {
-    if (idb.broken) throw new ReferenceError('indexedDB is not defined')
-    idb.store.set(key, value)
-  }),
+  set: vi.fn<(key: string, value: unknown) => Promise<void>>(
+    async (key: string, value: unknown) => {
+      if (idb.broken) throw new ReferenceError('indexedDB is not defined')
+      idb.store.set(key, value)
+    },
+  ),
 }))
 
 import { cacheGet, cacheSet, isFresh, resetMemoryCache, type CacheEntry } from './cache'

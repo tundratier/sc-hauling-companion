@@ -3,10 +3,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const idb = vi.hoisted(() => ({ store: new Map<string, unknown>() }))
 
 vi.mock('idb-keyval', () => ({
-  get: vi.fn(async (key: string) => idb.store.get(key)),
-  set: vi.fn(async (key: string, value: unknown) => {
-    idb.store.set(key, value)
-  }),
+  get: vi.fn<(key: string) => Promise<unknown>>(async (key: string) => idb.store.get(key)),
+  set: vi.fn<(key: string, value: unknown) => Promise<void>>(
+    async (key: string, value: unknown) => {
+      idb.store.set(key, value)
+    },
+  ),
 }))
 
 import { installMockFetch, json, requestedPaths } from '../test-utils/mockFetch'
@@ -24,6 +26,7 @@ import {
   refreshCooldownRemainingMs,
   type BackgroundOutcome,
   type PriceData,
+  type StaticData,
 } from './dataStore'
 
 const MIN = 60 * 1000
@@ -108,7 +111,7 @@ describe('warm start within TTL', () => {
     expect(mock).not.toHaveBeenCalled()
 
     advance(2 * MIN)
-    const onBackground = vi.fn()
+    const onBackground = vi.fn<(o: BackgroundOutcome<StaticData>) => void>()
     const loaded = await loadStaticData({ onBackground })
     expect(loaded.stale).toBe(true)
     await vi.waitFor(() => expect(onBackground).toHaveBeenCalled())
@@ -155,7 +158,7 @@ describe('prices after 30 minutes (stale-while-revalidate)', () => {
     await loadPrices()
     advance(PRICES_TTL_MS + MIN)
     installMockFetch(() => json({ status: 'error', http_code: 500, message: 'down' }, 500))
-    const onBackground = vi.fn()
+    const onBackground = vi.fn<(o: BackgroundOutcome<PriceData>) => void>()
     const loaded = await loadPrices({ onBackground })
     expect(loaded.stale).toBe(true)
     await vi.waitFor(() => expect(onBackground).toHaveBeenCalled())
@@ -170,12 +173,13 @@ describe('game version invalidation', () => {
 
     advance(MIN) // well within the TTL
     const mock = installMockFetch()
-    const onBackground = vi.fn()
+    const onBackground = vi.fn<(o: BackgroundOutcome<PriceData>) => void>()
     const loaded = await loadPrices({ gameVersion: '4.10.3', onBackground })
     expect(loaded.stale).toBe(true)
     await vi.waitFor(() => expect(onBackground).toHaveBeenCalled())
     expect(requestedPaths(mock)).toEqual(['commodities_prices_all'])
-    expect(onBackground.mock.calls[0][0].loaded.gameVersion).toBe('4.10.3')
+    const outcome = onBackground.mock.calls[0][0]
+    expect(outcome.ok && outcome.loaded.gameVersion).toBe('4.10.3')
   })
 
   it('same game version within the TTL stays cached', async () => {
@@ -223,7 +227,7 @@ describe('errors', () => {
     installMockFetch()
     await loadPrices()
     advance(5 * MIN)
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('offline')))
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockRejectedValue(new TypeError('offline')))
     const loaded = await loadPrices({ force: true })
     expect(loaded.error).toMatchObject({ kind: 'network' })
     expect(loaded.data.offers).toHaveLength(3)
@@ -232,7 +236,7 @@ describe('errors', () => {
   })
 
   it('throws (blocking error) when there is no cache at all', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('offline')))
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockRejectedValue(new TypeError('offline')))
     await expect(loadStaticData()).rejects.toMatchObject({ name: 'UexError', kind: 'network' })
   })
 
