@@ -14,6 +14,9 @@
   --amber-faint: #5e4a2c;
   --warn: #ff7a4d;
   --ok: #d9cf8f;
+  /* "bought" selection: light green with the same lightness as --amber */
+  --sel: #b5e08f;
+  --sel-bg: rgba(181, 224, 143, 0.12);
 
   --glow: 0 0 6px rgba(255, 207, 122, 0.3);
   --ring: 0 0 0 2px var(--bg), 0 0 0 4px var(--amber);

@@ -1,4 +1,4 @@
-import { useId, useState } from 'react'
+import { useId, useState, type ReactNode } from 'react'
 import type { Haul } from '../calc'
 import type { Terminal } from '../domain/types'
 import { formatAgeDays, formatInt, formatPercent } from '../lib/format'
@@ -14,6 +14,10 @@ interface OptionLineProps {
   /** Selected minimum box size (for the "unused SCU" hint). */
   minBox: number
   now: number
+  /** Marked as bought (trip mode). */
+  bought?: boolean
+  /** Present only at the current stop: tapping the line toggles "bought". */
+  onToggle?: () => void
 }
 
 function Field({ label, value }: { label: string; value: string }) {
@@ -31,11 +35,39 @@ export function boxBreakdown(haul: Haul): string {
   return `${parts} = ${haul.boxCount} box${haul.boxCount === 1 ? '' : 'es'}`
 }
 
+/** The collapsed line: a toggle button at the current stop, plain content elsewhere. */
+function LineTag({
+  toggle,
+  bought,
+  children,
+}: {
+  toggle?: () => void
+  bought: boolean
+  children: ReactNode
+}) {
+  return toggle ? (
+    <button type="button" className="option__line" aria-pressed={bought} onClick={toggle}>
+      {children}
+    </button>
+  ) : (
+    <div className="option__line option__line--static">{children}</div>
+  )
+}
+
 /**
- * One buy option: commodity (with its allowed box sizes) → sell stop, profit and ROI. The
- * whole collapsed line is the touch target; tapping expands the details.
+ * One buy option: commodity (with its allowed box sizes) → sell stop, prices, profit and ROI.
+ * At the current stop tapping the line marks it as bought; the chevron opens the details.
  */
-export function OptionLine({ haul, terminalById, stops, freeScu, minBox, now }: OptionLineProps) {
+export function OptionLine({
+  haul,
+  terminalById,
+  stops,
+  freeScu,
+  minBox,
+  now,
+  bought = false,
+  onToggle,
+}: OptionLineProps) {
   const [open, setOpen] = useState(false)
   const detailsId = useId()
   const sellName = shortName(terminalById.get(stops[haul.to]), stops[haul.to])
@@ -43,42 +75,53 @@ export function OptionLine({ haul, terminalById, stops, freeScu, minBox, now }: 
   const reported = reportedSummary(haul)
 
   return (
-    <li className={`option${open ? ' option--open' : ''}`}>
-      <button
-        type="button"
-        className="option__line"
-        aria-expanded={open}
-        aria-controls={detailsId}
-        onClick={() => setOpen(!open)}
-      >
-        <span className="option__name">
-          <strong>{haul.commodity.name}</strong>{' '}
-          <span className="num muted option__boxes" title="Allowed box sizes">
-            □ {haul.boxSizes.join('·')}
+    <li className={`option${open ? ' option--open' : ''}${bought ? ' option--bought' : ''}`}>
+      <div className="option__row">
+        <LineTag toggle={onToggle} bought={bought}>
+          <span className="option__name">
+            {bought && (
+              <span className="option__check" aria-hidden="true">
+                ✓{' '}
+              </span>
+            )}
+            <strong>{haul.commodity.name}</strong>{' '}
+            <span className="num muted option__boxes" title="Allowed box sizes">
+              □ {haul.boxSizes.join('·')}
+            </span>
           </span>
-        </span>
-        <span className="option__sell">
-          <span>
-            → <span className="num">#{haul.to + 1}</span> {sellName}
+          <span className="option__sell">
+            <span>
+              → <span className="num">#{haul.to + 1}</span> {sellName}
+            </span>
+            <Badges badges={badges} limit={MAX_COLLAPSED_BADGES} />
           </span>
-          <Badges badges={badges} limit={MAX_COLLAPSED_BADGES} />
-        </span>
-        <span className="option__prices num">
-          <span className="option__price">
-            <span className="option__label">BUY</span> {formatInt(haul.unitBuy)}
-          </span>{' '}
-          <span className="option__label">→</span>{' '}
-          <span className="option__price">
-            <span className="option__label">SELL</span> {formatInt(haul.unitSell)}{' '}
-            <span className="option__label">/SCU</span>
+          <span className="option__prices num">
+            <span className="option__price">
+              <span className="option__label">BUY</span> {formatInt(haul.unitBuy)}
+            </span>{' '}
+            <span className="option__label">→</span>{' '}
+            <span className="option__price">
+              <span className="option__label">SELL</span> {formatInt(haul.unitSell)}{' '}
+              <span className="option__label">/SCU</span>
+            </span>
           </span>
-        </span>
-        <span className="option__profit-cell">
-          <span className="num num--primary option__profit">{formatInt(haul.profit)}</span>
-          <span className="num option__unit"> aUEC</span>
-        </span>
-        <span className="num muted option__roi">{formatPercent(haul.roi)}</span>
-      </button>
+          <span className="option__profit-cell">
+            <span className="num num--primary option__profit">{formatInt(haul.profit)}</span>
+            <span className="num option__unit"> aUEC</span>
+          </span>
+          <span className="num muted option__roi">{formatPercent(haul.roi)}</span>
+        </LineTag>
+        <button
+          type="button"
+          className="option__chevron"
+          aria-expanded={open}
+          aria-controls={detailsId}
+          aria-label={`${open ? 'Hide' : 'Show'} details for ${haul.commodity.name} to stop ${haul.to + 1}`}
+          onClick={() => setOpen(!open)}
+        >
+          <span aria-hidden="true">{open ? '⌃' : '⌄'}</span>
+        </button>
+      </div>
 
       {open && (
         <div id={detailsId} className="option__details">

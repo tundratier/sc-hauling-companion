@@ -7,6 +7,7 @@ import type { Terminal } from '../domain/types'
 import { indexAtY } from '../lib/drag'
 import { MAX_STOPS, MIN_STOPS, useAppStore } from '../state/useAppStore'
 import { useDataStore } from '../state/useDataStore'
+import { inProgress } from '../trip/tripReducer'
 
 interface StopRowProps {
   index: number
@@ -80,6 +81,7 @@ function RouteEditor() {
   const terminals = useDataStore((s) => s.staticData!.data.terminals)
   const app = useAppStore()
   const { stops } = app
+  const trip = useAppStore((s) => s.trip)
   const [confirmClear, setConfirmClear] = useState(false)
   const [drag, setDrag] = useState<{ from: number; over: number } | null>(null)
   const listRef = useRef<HTMLOListElement>(null)
@@ -117,6 +119,12 @@ function RouteEditor() {
 
   return (
     <div className="stack">
+      {inProgress(trip) && (
+        <p className="banner" role="note">
+          Editing the route resets trip progress (at stop{' '}
+          {Math.min(trip.currentStop + 1, Math.max(1, stops.length))} of {stops.length})
+        </p>
+      )}
       {stops.length === 0 ? (
         <p className="panel muted">
           No stops yet. Add the terminals you must visit, in order — at least {MIN_STOPS}.

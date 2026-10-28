@@ -1,17 +1,14 @@
 import { useMemo, useState } from 'react'
 import { buildStaticIndexes } from '../api/indexes'
-import { groupByStop, type DroppedCounts, type Haul, type HaulSortKey } from '../calc'
+import { groupByStop, type DroppedCounts, type HaulSortKey } from '../calc'
 import { DataGate } from '../components/DataGate'
-import { OptionLine } from '../components/OptionLine'
-import { terminalDisplay } from '../domain/terminalDisplay'
-import type { Terminal } from '../domain/types'
+import { StopSection } from '../components/StopSection'
 import { useTrades } from '../hooks/useTrades'
 import { boxRangeText, formatAgeMs, formatClock, formatInt } from '../lib/format'
 import { shortName } from '../lib/terminalNames'
 import { useAppStore } from '../state/useAppStore'
 import { useDataStore } from '../state/useDataStore'
-
-const TOP_N = 5
+import { canComplete, clampTrip, inProgress, onBoard } from '../trip/tripReducer'
 
 const SORTS: { key: HaulSortKey; label: string }[] = [
   { key: 'profit', label: 'Profit' },
@@ -37,76 +34,6 @@ export function droppedLines(d: DroppedCounts): string[] {
   return lines
 }
 
-interface StopSectionProps {
-  index: number
-  stopCount: number
-  terminalId: number
-  options: Haul[]
-  terminalById: Map<number, Terminal>
-  stops: number[]
-  freeScu: number
-  minBox: number
-  now: number
-}
-
-/** One stop: its buy options (top 5, "Show N more"), each line naming the sell stop. */
-function StopSection({
-  index,
-  stopCount,
-  terminalId,
-  options,
-  terminalById,
-  stops,
-  freeScu,
-  minBox,
-  now,
-}: StopSectionProps) {
-  const [expanded, setExpanded] = useState(false)
-  const terminal = terminalById.get(terminalId)
-  const display = terminal ? terminalDisplay(terminal) : undefined
-  const last = index === stopCount - 1
-  const visible = expanded ? options : options.slice(0, TOP_N)
-  return (
-    <section className="stop-section" aria-label={`Stop ${index + 1}`}>
-      <header className="stop-section__head">
-        <span className="stop__index num">{index + 1}</span>
-        <div className="stop__text">
-          <h3 className="stop__primary">
-            {display?.primary ?? `Unknown terminal (#${terminalId})`}
-          </h3>
-          {display?.secondary && <div className="stop__secondary">{display.secondary}</div>}
-        </div>
-      </header>
-      {last ? (
-        <p className="muted stop-section__note">Final stop — sell only</p>
-      ) : options.length === 0 ? (
-        <p className="muted stop-section__note">Nothing profitable to buy here</p>
-      ) : (
-        <>
-          <ul className="options" aria-label={`Buy options at stop ${index + 1}`}>
-            {visible.map((haul) => (
-              <OptionLine
-                key={haul.id}
-                haul={haul}
-                terminalById={terminalById}
-                stops={stops}
-                freeScu={freeScu}
-                minBox={minBox}
-                now={now}
-              />
-            ))}
-          </ul>
-          {options.length > TOP_N && (
-            <button type="button" className="btn btn--block" onClick={() => setExpanded(!expanded)}>
-              {expanded ? 'Show fewer' : `Show ${options.length - TOP_N} more`}
-            </button>
-          )}
-        </>
-      )}
-    </section>
-  )
-}
-
 function TradesContent() {
   const { input, result, vehicle, ready, now } = useTrades()
   const setTab = useAppStore((s) => s.setTab)
@@ -116,6 +43,12 @@ function TradesContent() {
   const pricesError = useDataStore((s) => s.pricesError)
   const ensurePrices = useDataStore((s) => s.ensurePrices)
   const [sort, setSort] = useState<HaulSortKey>('profit')
+  const rawTrip = useAppStore((s) => s.trip)
+  const toggleBought = useAppStore((s) => s.toggleBought)
+  const departStop = useAppStore((s) => s.departStop)
+  const undoDepart = useAppStore((s) => s.undoDepart)
+  const completeRoute = useAppStore((s) => s.completeRoute)
+  const trip = clampTrip(rawTrip, input.stops.length)
 
   const { terminalById } = useMemo(
     () => buildStaticIndexes(staticData.commodities, staticData.terminals),
@@ -128,6 +61,7 @@ function TradesContent() {
 
   const routeText = input.stops.map((id) => shortName(terminalById.get(id), id)).join(' → ')
   const dropped = droppedLines(result.dropped)
+  const board = onBoard(trip)
 
   const summary = (
     <section className="panel stack" aria-label="Summary">
@@ -137,6 +71,17 @@ function TradesContent() {
         {vehicle ? vehicle.nameFull : 'no ship selected'} · boxes{' '}
         {boxRangeText(input.boxRange.min, input.boxRange.max)} SCU
       </p>
+      {input.stops.length >= 2 && (
+        <p className="num trades__progress">
+          AT STOP {trip.currentStop + 1} OF {input.stops.length}
+        </p>
+      )}
+      {board.length > 0 && (
+        <p className="num">
+          <span className="label">On board:</span>{' '}
+          {board.map((b) => `${b.commodityName} → #${b.sellStop + 1}`).join(', ')}
+        </p>
+      )}
       {prices && (
         <p className="num muted" aria-live="polite">
           Prices updated {formatClock(prices.fetchedAt)} · {formatAgeMs(now - prices.fetchedAt)} ago
@@ -191,7 +136,9 @@ function TradesContent() {
       </ul>
     ) : null
 
-  if (result.hauls.length === 0) {
+  // With no trades the empty state replaces the lists — unless a trip is in progress, whose
+  // reminders and bought lines must stay visible after a price refresh.
+  if (result.hauls.length === 0 && !inProgress(trip)) {
     return (
       <>
         {summary}
@@ -207,6 +154,11 @@ function TradesContent() {
     <>
       {summary}
       {droppedNote && <div className="panel">{droppedNote}</div>}
+      {result.hauls.length === 0 && (
+        <p className="panel muted" role="status">
+          No profitable trades along this route any more — your trip progress is kept.
+        </p>
+      )}
 
       <div className="row row--wrap">
         <p className="muted grow">
@@ -245,8 +197,17 @@ function TradesContent() {
             freeScu={input.freeScu}
             minBox={input.boxRange.min}
             now={now}
+            trip={trip}
+            onToggle={toggleBought}
+            onDepart={departStop}
+            onUndo={undoDepart}
           />
         ))}
+        {canComplete(trip, input.stops.length) && (
+          <button type="button" className="btn btn--primary btn--block" onClick={completeRoute}>
+            Complete route ✓
+          </button>
+        )}
       </div>
     </>
   )

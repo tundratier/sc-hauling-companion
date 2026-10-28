@@ -2,6 +2,16 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { Vehicle } from '../domain/types'
 import { STD_BOX_SIZES } from '../domain/types'
+import {
+  INITIAL_TRIP,
+  complete,
+  depart,
+  sameRoute,
+  toggleBought,
+  undo,
+  type BoughtLine,
+  type TripState,
+} from '../trip/tripReducer'
 
 export type Tab = 'ship' | 'route' | 'trades'
 
@@ -34,6 +44,8 @@ export interface AppState {
   showUnavailableTerminals: boolean
   /** Terminal ids in route order; the same terminal may appear more than once. */
   stops: number[]
+  /** Trip mode progress (SPEC §7.6); resets whenever the stop list changes. */
+  trip: TripState
 
   setTab: (tab: Tab) => void
   selectVehicle: (vehicle: Vehicle | null) => void
@@ -49,6 +61,11 @@ export interface AppState {
   moveStop: (from: number, to: number) => void
   reverseStops: () => void
   clearStops: () => void
+  toggleBought: (line: BoughtLine) => void
+  departStop: () => void
+  undoDepart: () => void
+  /** Finish the route: clear the stops, reset the trip and open ROUTE. */
+  completeRoute: () => void
 }
 
 /** Default box range: min 4 (nobody wants to load hundreds of 1-SCU boxes), max = ship's largest. */
@@ -66,6 +83,11 @@ export const clampFreeScu = (scu: number, shipScu?: number | null): number => {
   return Math.min(max, Math.max(1, n))
 }
 
+/** New stop list; the trip resets whenever the route actually changes. */
+function withStops(s: AppState, stops: number[]): Partial<AppState> {
+  return sameRoute(s.stops, stops) ? {} : { stops, trip: INITIAL_TRIP }
+}
+
 export const useAppStore = create<AppState>()(
   persist(
     (set) => ({
@@ -80,6 +102,7 @@ export const useAppStore = create<AppState>()(
       maxPriceAgeDays: null,
       showUnavailableTerminals: false,
       stops: [],
+      trip: INITIAL_TRIP,
 
       setTab: (tab) => set({ tab }),
       selectVehicle: (vehicle) =>
@@ -101,8 +124,14 @@ export const useAppStore = create<AppState>()(
       setMaxPriceAgeDays: (maxPriceAgeDays) => set({ maxPriceAgeDays }),
       setShowUnavailableTerminals: (showUnavailableTerminals) => set({ showUnavailableTerminals }),
       addStop: (terminalId) =>
-        set((s) => (s.stops.length >= MAX_STOPS ? s : { stops: [...s.stops, terminalId] })),
-      removeStop: (index) => set((s) => ({ stops: s.stops.filter((_, i) => i !== index) })),
+        set((s) => (s.stops.length >= MAX_STOPS ? s : withStops(s, [...s.stops, terminalId]))),
+      removeStop: (index) =>
+        set((s) =>
+          withStops(
+            s,
+            s.stops.filter((_, i) => i !== index),
+          ),
+        ),
       moveStop: (from, to) =>
         set((s) => {
           if (from === to || from < 0 || to < 0 || from >= s.stops.length || to >= s.stops.length) {
@@ -111,10 +140,14 @@ export const useAppStore = create<AppState>()(
           const stops = [...s.stops]
           const [moved] = stops.splice(from, 1)
           stops.splice(to, 0, moved)
-          return { stops }
+          return withStops(s, stops)
         }),
-      reverseStops: () => set((s) => ({ stops: [...s.stops].reverse() })),
-      clearStops: () => set({ stops: [] }),
+      reverseStops: () => set((s) => withStops(s, [...s.stops].reverse())),
+      clearStops: () => set((s) => withStops(s, [])),
+      toggleBought: (line) => set((s) => ({ trip: toggleBought(s.trip, line) })),
+      departStop: () => set((s) => ({ trip: depart(s.trip, s.stops.length) })),
+      undoDepart: () => set((s) => ({ trip: undo(s.trip) })),
+      completeRoute: () => set({ stops: [], trip: complete(), tab: 'route' }),
     }),
     {
       name: STORAGE_KEY,
@@ -131,6 +164,7 @@ export const useAppStore = create<AppState>()(
         maxPriceAgeDays: s.maxPriceAgeDays,
         showUnavailableTerminals: s.showUnavailableTerminals,
         stops: s.stops,
+        trip: s.trip,
       }),
     },
   ),
