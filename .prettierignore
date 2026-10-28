@@ -1,0 +1,7 @@
+node_modules
+dist
+coverage
+package-lock.json
+CHANGELOG.md
+docs
+src/__fixtures__

@@ -1,0 +1,170 @@
+/* App shell: header strip, scrolling content, bottom tab bar. Mobile first (360–820 px). */
+.app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+  max-width: var(--max-width);
+  margin: 0 auto;
+}
+
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px var(--gutter);
+  padding-top: max(8px, env(safe-area-inset-top));
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+}
+
+.app-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-shadow: var(--glow);
+}
+
+.app-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: var(--gutter);
+}
+
+.app-main > .stack {
+  flex: 1 1 auto;
+}
+
+/* Bottom tab bar, reachable by thumb. It lives inside the centered content column (never
+   positioned against the viewport edge), so it stays centered at every width. */
+.tabbar {
+  position: sticky;
+  bottom: 0;
+  z-index: 30;
+  background: var(--panel);
+  border-top: 1px solid var(--line);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.tabbar__inner {
+  display: flex;
+  max-width: var(--max-width);
+  margin: 0 auto;
+}
+
+.tab {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: var(--tabbar-height);
+  min-width: var(--tap);
+  padding: 6px 4px;
+  background: transparent;
+  border: 0;
+  border-top: 2px solid transparent;
+  color: var(--amber-dim);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition:
+    color var(--transition),
+    background var(--transition);
+}
+
+.tab svg {
+  width: 22px;
+  height: 22px;
+}
+
+.tab[aria-selected='true'] {
+  color: var(--amber);
+  border-top-color: var(--amber);
+  background: var(--panel-raised);
+  text-shadow: var(--glow);
+}
+
+.tab:focus-visible {
+  outline-offset: -4px;
+}
+
+.view {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.view-title {
+  font-family: var(--font-mono);
+  font-size: 1.125rem;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.app-footer {
+  margin-top: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  color: var(--amber-dim);
+  font-size: 0.8125rem;
+}
+
+/* Sticky bottom action (CALCULATE TRADES) above the tab bar, inside the content column:
+   full column width below 600 px, otherwise max 480 px centered. */
+.sticky-action {
+  display: flex;
+  justify-content: center; /* centers the button regardless of its own display type */
+  position: sticky;
+  bottom: calc(var(--tabbar-height) + env(safe-area-inset-bottom));
+  z-index: 25;
+  margin-top: auto;
+  padding: 8px 0;
+  background: linear-gradient(to top, var(--bg) 70%, transparent);
+}
+
+.sticky-action > * {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+
+@media (min-width: 600px) {
+  .sticky-action > * {
+    flex-basis: 480px;
+    max-width: 480px;
+  }
+}
+
+/* Narrow screens: title + refresh on the first row, data status pill below. */
+@media (max-width: 479px) {
+  .app-header {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+
+  .app-header .pill {
+    order: 3;
+    flex: 1 1 100%;
+    justify-content: center;
+  }
+
+  .app-header .btn--icon {
+    order: 2;
+  }
+}

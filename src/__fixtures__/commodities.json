@@ -1,0 +1,17 @@
+{
+  "status": "ok",
+  "http_code": 200,
+  "message": "",
+  "data": [
+    { "id": 1, "name": "Agricium", "code": "AGRI", "kind": "Metal", "is_raw": 0, "is_illegal": 0, "is_volatile_qt": 0, "is_volatile_time": 0, "is_available_live": 1, "is_temporary": 0 },
+    { "id": 2, "name": "Laranite", "code": "LARA", "kind": "Metal", "is_raw": 0, "is_illegal": 0, "is_volatile_qt": 0, "is_volatile_time": 0, "is_available_live": 1, "is_temporary": 0 },
+    { "id": 3, "name": "Taranite (Raw)", "code": "TARR", "kind": "Mineral", "is_raw": 1, "is_illegal": 0, "is_volatile_qt": 0, "is_volatile_time": 0, "is_available_live": 1, "is_temporary": 0 },
+    { "id": 4, "name": "WiDoW", "code": "WIDO", "kind": "Drug", "is_raw": 0, "is_illegal": 1, "is_volatile_qt": 0, "is_volatile_time": 0, "is_available_live": 1, "is_temporary": 0 },
+    { "id": 5, "name": "Diluthermex", "code": "DILU", "kind": "Man-made", "is_raw": 0, "is_illegal": 0, "is_volatile_qt": 1, "is_volatile_time": 0, "is_available_live": 1, "is_temporary": 0 },
+    { "id": 6, "name": "Zeta-Prolanide", "code": "ZETA", "kind": "Man-Made", "is_raw": 0, "is_illegal": 0, "is_volatile_qt": 0, "is_volatile_time": 1, "is_available_live": 1, "is_temporary": 0 },
+    { "id": "7", "name": "Fireworks", "code": "FIRE", "kind": "Minteral", "is_raw": "0", "is_illegal": "0", "is_volatile_qt": 0, "is_volatile_time": 0, "is_available_live": 1, "is_temporary": 1 },
+    { "id": 8, "name": "Retired Goods", "code": "RETI", "kind": "Misc", "is_raw": 0, "is_illegal": 0, "is_volatile_qt": 0, "is_volatile_time": 0, "is_available_live": 0, "is_temporary": 0 },
+    { "name": "No Id", "code": "NOID" },
+    "garbage"
+  ]
+}
