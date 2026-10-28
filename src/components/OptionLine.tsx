@@ -39,10 +39,16 @@ export function boxBreakdown(haul: Haul): string {
 function LineTag({
   toggle,
   bought,
+  expanded,
+  detailsId,
+  onExpand,
   children,
 }: {
   toggle?: () => void
   bought: boolean
+  expanded: boolean
+  detailsId: string
+  onExpand: () => void
   children: ReactNode
 }) {
   return toggle ? (
@@ -50,13 +56,22 @@ function LineTag({
       {children}
     </button>
   ) : (
-    <div className="option__line option__line--static">{children}</div>
+    <button
+      type="button"
+      className="option__line"
+      aria-expanded={expanded}
+      aria-controls={detailsId}
+      onClick={onExpand}
+    >
+      {children}
+    </button>
   )
 }
 
 /**
  * One buy option: commodity (with its allowed box sizes) → sell stop, prices, profit and ROI.
- * At the current stop tapping the line marks it as bought; the chevron opens the details.
+ * At the current stop tapping the line marks it as bought (and shows its details); elsewhere
+ * tapping expands or collapses the details.
  */
 export function OptionLine({
   haul,
@@ -69,15 +84,24 @@ export function OptionLine({
   onToggle,
 }: OptionLineProps) {
   const [open, setOpen] = useState(false)
+  // Bought lines at the current stop show their details automatically (unmarking collapses
+  // them); lines that are not toggles expand and collapse when tapped.
+  const expanded = onToggle ? bought : open
   const detailsId = useId()
   const sellName = shortName(terminalById.get(stops[haul.to]), stops[haul.to])
   const badges = haulBadges(haul)
   const reported = reportedSummary(haul)
 
   return (
-    <li className={`option${open ? ' option--open' : ''}${bought ? ' option--bought' : ''}`}>
+    <li className={`option${expanded ? ' option--open' : ''}${bought ? ' option--bought' : ''}`}>
       <div className="option__row">
-        <LineTag toggle={onToggle} bought={bought}>
+        <LineTag
+          toggle={onToggle}
+          bought={bought}
+          expanded={expanded}
+          detailsId={detailsId}
+          onExpand={() => setOpen(!open)}
+        >
           <span className="option__name">
             {bought && (
               <span className="option__check" aria-hidden="true">
@@ -111,19 +135,9 @@ export function OptionLine({
           </span>
           <span className="num muted option__roi">{formatPercent(haul.roi)}</span>
         </LineTag>
-        <button
-          type="button"
-          className="option__chevron"
-          aria-expanded={open}
-          aria-controls={detailsId}
-          aria-label={`${open ? 'Hide' : 'Show'} details for ${haul.commodity.name} to stop ${haul.to + 1}`}
-          onClick={() => setOpen(!open)}
-        >
-          <span aria-hidden="true">{open ? '⌃' : '⌄'}</span>
-        </button>
       </div>
 
-      {open && (
+      {expanded && (
         <div id={detailsId} className="option__details">
           <div className="fields">
             <Field label="Margin / SCU" value={formatInt(haul.margin)} />
