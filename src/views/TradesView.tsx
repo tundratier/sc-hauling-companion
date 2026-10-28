@@ -1,15 +1,17 @@
 import { useMemo, useState } from 'react'
 import { buildStaticIndexes } from '../api/indexes'
-import { compareHauls, type DroppedCounts, type HaulSortKey, type Plan } from '../calc'
+import { groupByStop, type DroppedCounts, type Haul, type HaulSortKey } from '../calc'
 import { DataGate } from '../components/DataGate'
-import { HaulCard, shortName } from '../components/HaulCard'
-import { PlanView } from '../components/PlanView'
+import { OptionLine } from '../components/OptionLine'
+import type { Terminal } from '../domain/types'
 import { useTrades } from '../hooks/useTrades'
 import { boxRangeText, formatAgeMs, formatClock, formatInt } from '../lib/format'
+import { shortName } from '../lib/terminalNames'
 import { useAppStore } from '../state/useAppStore'
 import { useDataStore } from '../state/useDataStore'
+import { terminalSecondary } from './RouteView'
 
-const PAGE_SIZE = 30
+const TOP_N = 5
 
 const SORTS: { key: HaulSortKey; label: string }[] = [
   { key: 'profit', label: 'Profit' },
@@ -35,8 +37,74 @@ export function droppedLines(d: DroppedCounts): string[] {
   return lines
 }
 
-const planLabel = (plan: Plan, index: number) =>
-  `${index === 0 ? 'MAX' : `#${index + 1}`}${plan.warningCount > 0 ? ` ⚠${plan.warningCount}` : ''}`
+interface StopSectionProps {
+  index: number
+  stopCount: number
+  terminalId: number
+  options: Haul[]
+  terminalById: Map<number, Terminal>
+  stops: number[]
+  freeScu: number
+  minBox: number
+  now: number
+}
+
+/** One stop: its buy options (top 5, "Show N more"), each line naming the sell stop. */
+function StopSection({
+  index,
+  stopCount,
+  terminalId,
+  options,
+  terminalById,
+  stops,
+  freeScu,
+  minBox,
+  now,
+}: StopSectionProps) {
+  const [expanded, setExpanded] = useState(false)
+  const terminal = terminalById.get(terminalId)
+  const last = index === stopCount - 1
+  const visible = expanded ? options : options.slice(0, TOP_N)
+  return (
+    <section className="stop-section" aria-label={`Stop ${index + 1}`}>
+      <header className="stop-section__head">
+        <span className="stop__index num">{index + 1}</span>
+        <div className="stop__text">
+          <h3 className="stop__primary">
+            {terminal?.displayname ?? `Unknown terminal (#${terminalId})`}
+          </h3>
+          {terminal && <div className="stop__secondary">{terminalSecondary(terminal)}</div>}
+        </div>
+      </header>
+      {last ? (
+        <p className="muted stop-section__note">Final stop — sell only</p>
+      ) : options.length === 0 ? (
+        <p className="muted stop-section__note">Nothing profitable to buy here</p>
+      ) : (
+        <>
+          <ul className="options" aria-label={`Buy options at stop ${index + 1}`}>
+            {visible.map((haul) => (
+              <OptionLine
+                key={haul.id}
+                haul={haul}
+                terminalById={terminalById}
+                stops={stops}
+                freeScu={freeScu}
+                minBox={minBox}
+                now={now}
+              />
+            ))}
+          </ul>
+          {options.length > TOP_N && (
+            <button type="button" className="btn btn--block" onClick={() => setExpanded(!expanded)}>
+              {expanded ? 'Show fewer' : `Show ${options.length - TOP_N} more`}
+            </button>
+          )}
+        </>
+      )}
+    </section>
+  )
+}
 
 function TradesContent() {
   const { input, result, vehicle, ready, now } = useTrades()
@@ -46,22 +114,18 @@ function TradesContent() {
   const pricesStatus = useDataStore((s) => s.pricesStatus)
   const pricesError = useDataStore((s) => s.pricesError)
   const ensurePrices = useDataStore((s) => s.ensurePrices)
-  const [planIndex, setPlanIndex] = useState(0)
   const [sort, setSort] = useState<HaulSortKey>('profit')
-  const [shown, setShown] = useState(PAGE_SIZE)
 
   const { terminalById } = useMemo(
     () => buildStaticIndexes(staticData.commodities, staticData.terminals),
     [staticData],
   )
-  const sortedHauls = useMemo(
-    () => [...result.hauls].sort(compareHauls(sort)),
-    [result.hauls, sort],
+  const byStop = useMemo(
+    () => (sort === 'profit' ? result.byStop : groupByStop(result.hauls, input.stops.length, sort)),
+    [result, sort, input.stops.length],
   )
 
   const routeText = input.stops.map((id) => shortName(terminalById.get(id), id)).join(' → ')
-  const activePlan = Math.min(planIndex, Math.max(0, result.plans.length - 1))
-  const plan = result.plans[activePlan]
   const dropped = droppedLines(result.dropped)
 
   const summary = (
@@ -143,84 +207,46 @@ function TradesContent() {
       {summary}
       {droppedNote && <div className="panel">{droppedNote}</div>}
 
-      <section className="stack" aria-labelledby="plans-title">
-        <h3 id="plans-title" className="section-title">
-          Plans
-        </h3>
-        <div className="chips" role="tablist" aria-label="Plans">
-          {result.plans.map((p, i) => (
-            <button
-              key={p.key}
-              type="button"
-              role="tab"
-              id={`plan-tab-${i}`}
-              aria-selected={i === activePlan}
-              aria-controls="plan-panel"
-              className="chip"
-              onClick={() => setPlanIndex(i)}
-            >
-              {planLabel(p, i)}
-            </button>
-          ))}
+      <div className="row row--wrap">
+        <p className="muted grow">
+          Buy options at each stop — {formatInt(result.hauls.length)} in total
+        </p>
+        <div>
+          <label className="label" htmlFor="haul-sort">
+            Sort by
+          </label>
+          <select
+            id="haul-sort"
+            className="input"
+            value={sort}
+            onChange={(e) => setSort(SORTS.find((s) => s.key === e.target.value)?.key ?? 'profit')}
+          >
+            {SORTS.map((s) => (
+              <option key={s.key} value={s.key}>
+                {s.label}
+              </option>
+            ))}
+          </select>
         </div>
-        {plan && (
-          <div id="plan-panel" role="tabpanel" aria-labelledby={`plan-tab-${activePlan}`}>
-            <PlanView
-              plan={plan}
-              stops={input.stops}
-              terminalById={terminalById}
-              freeScu={input.freeScu}
-              now={now}
-            />
-          </div>
-        )}
-      </section>
+      </div>
 
-      <section className="stack" aria-labelledby="hauls-title">
-        <div className="row row--wrap">
-          <h3 id="hauls-title" className="section-title grow">
-            Single hauls
-            <span className="muted num"> · {formatInt(sortedHauls.length)}</span>
-          </h3>
-          <div>
-            <label className="label" htmlFor="haul-sort">
-              Sort by
-            </label>
-            <select
-              id="haul-sort"
-              className="input"
-              value={sort}
-              onChange={(e) => {
-                setSort(SORTS.find((s) => s.key === e.target.value)?.key ?? 'profit')
-                setShown(PAGE_SIZE)
-              }}
-            >
-              {SORTS.map((s) => (
-                <option key={s.key} value={s.key}>
-                  {s.label}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-        <div className="hauls">
-          {sortedHauls.slice(0, shown).map((haul) => (
-            <HaulCard
-              key={haul.id}
-              haul={haul}
-              terminalById={terminalById}
-              stops={input.stops}
-              freeScu={input.freeScu}
-              now={now}
-            />
-          ))}
-        </div>
-        {sortedHauls.length > shown && (
-          <button type="button" className="btn" onClick={() => setShown((n) => n + PAGE_SIZE)}>
-            Show more ({formatInt(sortedHauls.length - shown)} left)
-          </button>
-        )}
-      </section>
+      <div className="stack">
+        {input.stops.map((terminalId, index) => (
+          <StopSection
+            // stops are positions: the same terminal can appear more than once
+            key={`${index}-${terminalId}`}
+            index={index}
+            stopCount={input.stops.length}
+            terminalId={terminalId}
+            options={byStop[index] ?? []}
+            terminalById={terminalById}
+            stops={input.stops}
+            freeScu={input.freeScu}
+            minBox={input.boxRange.min}
+            now={now}
+          />
+        ))}
+      </div>
     </>
   )
 }

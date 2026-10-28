@@ -1,8 +1,8 @@
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it } from 'vitest'
-import type { PriceOffer, Vehicle } from '../domain/types'
 import { UexError } from '../api/uexClient'
+import type { PriceOffer, Vehicle } from '../domain/types'
 import { useAppStore } from '../state/useAppStore'
 import { useDataStore } from '../state/useDataStore'
 import { buyOffer, commodity, sellOffer, terminal } from '../test-utils/calcFixtures'
@@ -29,14 +29,22 @@ interface Seed {
   stops?: number[]
   ship?: boolean
   prices?: boolean
+  boxMin?: number
 }
 
-function seed({ offers, commodities, stops = [1, 2, 3], ship = true, prices = true }: Seed) {
+function seed({
+  offers,
+  commodities,
+  stops = [1, 2, 3],
+  ship = true,
+  prices = true,
+  boxMin = 1,
+}: Seed) {
   useAppStore.setState({
     stops,
     vehicleId: ship ? 100 : null,
     freeScu: 46,
-    boxMin: 1,
+    boxMin,
     boxMax: 16,
     tab: 'trades',
   })
@@ -92,6 +100,10 @@ const laranite = [
   sellOffer(1, 3, 3315, { dateModified: ago(0.1) }),
 ]
 
+const section = (n: number) => screen.getByRole('region', { name: `Stop ${n}` })
+const lines = (n: number) => within(section(n)).queryAllByRole('listitem')
+const profits = (n: number) => lines(n).map((l) => l.querySelector('.option__profit')?.textContent)
+
 describe('TradesView states', () => {
   it('asks for at least two stops and links to ROUTE', async () => {
     seed({ offers: laranite, stops: [1] })
@@ -117,12 +129,12 @@ describe('TradesView states', () => {
     expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
   })
 
-  it('shows the summary: route, free SCU, ship and price age', () => {
-    seed({ offers: laranite })
+  it('shows the summary: route, free SCU, ship, box range and price age', () => {
+    seed({ offers: laranite, boxMin: 4 })
     render(<TradesView />)
     const summary = screen.getByRole('region', { name: 'Summary' })
     expect(summary).toHaveTextContent('ARC-L1 → TDD Area 18 → CBD Lorville')
-    expect(summary).toHaveTextContent('Free cargo 46 SCU · Drake Cutlass Black')
+    expect(summary).toHaveTextContent('Free cargo 46 SCU · Drake Cutlass Black · boxes 4–16 SCU')
     expect(summary).toHaveTextContent(/Prices updated \d\d:\d\d · 12m ago/)
   })
 
@@ -143,188 +155,130 @@ describe('TradesView states', () => {
         sellOffer(3, 3, 150),
         buyOffer(4, 1, 100),
         sellOffer(4, 3, 150, { dateModified: ago(30) }),
+        buyOffer(5, 1, 100, { containerSizes: [1, 2] }),
+        sellOffer(5, 3, 150),
       ],
       commodities: [
         commodity(1),
         commodity(2, { isIllegal: true }),
         commodity(3, { isVolatileQt: true }),
         commodity(4),
+        commodity(5),
       ],
+      boxMin: 4,
     })
     useAppStore.setState({ includeIllegal: false, maxPriceAgeDays: 7 })
     render(<TradesView />)
     expect(screen.getByText('No profitable trades along this route.')).toBeInTheDocument()
     const dropped = screen.getByRole('list', { name: 'Trades not shown' })
     expect(dropped).toHaveTextContent('1 trade need bigger boxes than your ship takes')
+    expect(dropped).toHaveTextContent('1 trade only comes in boxes smaller than your minimum')
     expect(dropped).toHaveTextContent('1 hidden by the illegal-commodities filter')
     expect(dropped).toHaveTextContent('1 hidden by the quantum-volatile filter')
     expect(dropped).toHaveTextContent('1 hidden by the price-age filter')
   })
 
-  it('keeps the dropped counts visible next to results', () => {
+  it('never shows raw commodities', () => {
     seed({
-      offers: [...laranite, buyOffer(2, 1, 100, { containerSizes: [32] }), sellOffer(2, 3, 200)],
-      commodities: [commodity(1, { name: 'Laranite' }), commodity(2)],
-    })
-    render(<TradesView />)
-    expect(screen.getByRole('list', { name: 'Trades not shown' })).toHaveTextContent(
-      '1 trade need bigger boxes',
-    )
-    expect(screen.getByText('Plans')).toBeInTheDocument()
-  })
-})
-
-describe('plans', () => {
-  // A→C (skip) margin 100, A→B + B→C margins 40 + 80
-  const offers = [
-    buyOffer(1, 1, 1000, { dateModified: ago(9) }),
-    sellOffer(1, 3, 1100),
-    buyOffer(2, 1, 1000, { statusBuy: 1, scuBuy: 0, scuBuyAvg: 0, dateModified: ago(9) }),
-    sellOffer(2, 2, 1040),
-    buyOffer(3, 2, 1000),
-    sellOffer(3, 3, 1080, { statusSell: 6 }),
-  ]
-  const commodities = [
-    commodity(1, { name: 'Skipium' }),
-    commodity(2, { name: 'Stockless', isIllegal: true }),
-    commodity(3, { name: 'Demandite', isVolatileTime: true }),
-  ]
-
-  it('lists MAX, #2, … chips with a warning count and selects a plan', async () => {
-    seed({ offers, commodities })
-    const user = userEvent.setup()
-    render(<TradesView />)
-    const chips = within(screen.getByRole('tablist', { name: 'Plans' })).getAllByRole('tab')
-    expect(chips.map((c) => c.textContent)).toEqual(['MAX ⚠2', '#2', '#3 ⚠1', '#4 ⚠1'])
-    expect(chips[0]).toHaveAttribute('aria-selected', 'true')
-    // MAX = Stockless A→B (1,840) + Demandite B→C (3,680)... compared with Skipium A→C
-    const plan = screen.getByTestId('plan')
-    expect(within(plan).getByText('Profit').nextElementSibling).toHaveTextContent('5,520')
-    await user.click(chips[1])
-    expect(chips[1]).toHaveAttribute('aria-selected', 'true')
-    expect(
-      within(screen.getByTestId('plan')).getByText('Profit').nextElementSibling,
-    ).toHaveTextContent('4,600')
-  })
-
-  it('shows KPIs: profit, ROI, investment, capital required and peak SCU / C', () => {
-    seed({ offers, commodities })
-    render(<TradesView />)
-    const plan = screen.getByTestId('plan')
-    const kpi = (label: string) => within(plan).getByText(label).nextElementSibling!.textContent
-    expect(kpi('Profit')).toContain('5,520')
-    expect(kpi('ROI')).toBe('6.0%')
-    expect(kpi('Investment')).toBe('92,000')
-    expect(kpi('Capital required')).toBe('46,000')
-    expect(kpi('Peak SCU')).toBe('46 / 46')
-  })
-
-  it('renders the execution timeline with BUY / SELL lines and boxes', () => {
-    seed({ offers, commodities })
-    render(<TradesView />)
-    const timeline = screen.getByRole('list', { name: 'Execution timeline' })
-    const stops = within(timeline).getAllByRole('listitem')
-    expect(stops).toHaveLength(3)
-    expect(stops[0]).toHaveTextContent('ARC-L1 Wide Forest Station')
-    expect(stops[0]).toHaveTextContent('BUY')
-    expect(stops[0]).toHaveTextContent('46 SCU Stockless')
-    expect(stops[0]).toHaveTextContent('@ 1,000')
-    expect(stops[0]).toHaveTextContent('= 46,000')
-    expect(stops[0]).toHaveTextContent('boxes 2×16 · 1×8 · 1×4 · 1×2')
-    expect(stops[1]).toHaveTextContent('SELL')
-    expect(stops[1]).toHaveTextContent('+1,840')
-    expect(stops[1]).toHaveTextContent('BUY')
-    expect(stops[2]).toHaveTextContent('+3,680')
-  })
-
-  it('collapses pass-through stops with the SCU on board', () => {
-    seed({
-      offers: [buyOffer(1, 1, 1000), sellOffer(1, 3, 1100)],
-      commodities: [commodity(1, { name: 'Skipium' })],
-    })
-    render(<TradesView />)
-    const stops = within(screen.getByRole('list', { name: 'Execution timeline' })).getAllByRole(
-      'listitem',
-    )
-    expect(stops[1]).toHaveTextContent('Area18')
-    expect(stops[1]).toHaveTextContent('pass through · 46 SCU on board')
-    expect(stops[1]).not.toHaveTextContent('BUY')
-  })
-
-  it('badges hauls: ILLEGAL, SKIPS, STALE, VOLATILE', () => {
-    seed({ offers, commodities })
-    render(<TradesView />)
-    const hauls = screen.getAllByRole('article')
-    const byName = (name: string) => hauls.find((h) => h.textContent?.includes(name))!
-    expect(byName('Skipium')).toHaveTextContent('SKIPS 1')
-    expect(byName('Skipium')).toHaveTextContent('STALE 9d')
-    expect(byName('Skipium')).toHaveTextContent('LEGAL')
-    expect(byName('Stockless')).toHaveTextContent('ILLEGAL')
-    expect(byName('Demandite')).toHaveTextContent('VOLATILE')
-  })
-
-  it('explains an inventory warning with the reported values when tapped', async () => {
-    seed({ offers, commodities })
-    const user = userEvent.setup()
-    render(<TradesView />)
-    const plan = screen.getByTestId('plan')
-    await user.click(within(plan).getByRole('button', { name: 'NO STOCK?' }))
-    expect(within(plan).getByRole('note')).toHaveTextContent(
-      'Reported 9 d ago at the buy stop: stock Out of Stock (0–14 %), 0 SCU. Inventory may have refilled since.',
-    )
-    await user.click(within(plan).getByRole('button', { name: 'NO STOCK?' }))
-    expect(within(plan).queryByRole('note')).not.toBeInTheDocument()
-    await user.click(within(plan).getByRole('button', { name: 'LOW DEMAND?' }))
-    expect(within(plan).getByRole('note')).toHaveTextContent('demand Very High (72–85 %)')
-  })
-})
-
-describe('single hauls', () => {
-  it('shows every field of a haul (criterion 10) including a skip option (criterion 6)', () => {
-    seed({
-      offers: [
-        buyOffer(1, 1, 2810, { dateModified: ago(0.4), statusBuy: 3, scuBuy: 0, scuBuyAvg: 54 }),
-        sellOffer(1, 3, 3315, {
-          dateModified: ago(2),
-          statusSell: 5,
-          scuSell: 14,
-          scuSellStock: 2,
-        }),
-      ],
-    })
-    render(<TradesView />)
-    const haul = screen.getByRole('article')
-    expect(haul).toHaveTextContent('Laranite')
-    expect(haul).toHaveTextContent('LEGAL')
-    expect(haul).toHaveTextContent('SKIPS 1')
-    expect(haul).toHaveTextContent('1 ARC-L1 → 3 CBD Lorville')
-    expect(haul).toHaveTextContent('Buy / SCU2,810')
-    expect(haul).toHaveTextContent('Sell / SCU3,315')
-    expect(haul).toHaveTextContent('Margin / SCU505')
-    expect(haul).toHaveTextContent('Quantity46 of 46 SCU')
-    expect(haul).toHaveTextContent('□ 1·2·4·8·16 — 2×16 · 1×8 · 1×4 · 1×2')
-    expect(haul).toHaveTextContent('Investment129,260')
-    expect(haul).toHaveTextContent('Profit23,230')
-    expect(haul).toHaveTextContent('ROI18.0%')
-    expect(haul).toHaveTextContent('buy 9h · sell 2d')
-    expect(haul).toHaveTextContent('Reported — buy: LO · 54 SCU · sell: HI · 14 SCU · stock 2')
-  })
-
-  it('keeps a NO STOCK? haul at full quantity (criterion 13)', () => {
-    seed({
-      offers: [
-        buyOffer(1, 1, 1000, { statusBuy: 1, scuBuy: 0, scuBuyAvg: 0 }),
-        sellOffer(1, 2, 1100),
-      ],
+      offers: [buyOffer(1, 1, 100), sellOffer(1, 2, 200)],
+      commodities: [commodity(1, { name: 'Raw Ore', isRaw: true })],
       stops: [1, 2],
     })
     render(<TradesView />)
-    const haul = screen.getByRole('article')
-    expect(haul).toHaveTextContent('Quantity46 of 46 SCU')
-    expect(within(haul).getByRole('button', { name: 'NO STOCK?' })).toBeInTheDocument()
+    expect(screen.queryByText('Raw Ore')).not.toBeInTheDocument()
+    expect(screen.getByText('No profitable trades along this route.')).toBeInTheDocument()
+  })
+})
+
+describe('stop sections (criterion 6)', () => {
+  // stop 1 buys Alpha (sells at stops 2 and 3) and Beta (sells at stop 3); stop 2 buys Gamma
+  const commodities = [
+    commodity(1, { name: 'Alpha' }),
+    commodity(2, { name: 'Beta', isIllegal: true }),
+    commodity(3, { name: 'Gamma' }),
+  ]
+  const offers = [
+    buyOffer(1, 1, 100, { dateModified: ago(9) }),
+    sellOffer(1, 2, 130),
+    sellOffer(1, 3, 150),
+    buyOffer(2, 1, 1000, { statusBuy: 1, scuBuy: 0, scuBuyAvg: 0 }),
+    sellOffer(2, 3, 1060, { statusSell: 6 }),
+    buyOffer(3, 2, 10),
+    sellOffer(3, 3, 25),
+  ]
+
+  it('renders one section per stop, in route order, with number and terminal name', () => {
+    seed({ offers, commodities })
+    render(<TradesView />)
+    const sections = screen.getAllByRole('region').filter((r) => /^Stop \d/.test(r.ariaLabel ?? ''))
+    expect(sections).toHaveLength(3)
+    expect(sections[0]).toHaveTextContent('1ARC-L1 Wide Forest Station')
+    expect(sections[1]).toHaveTextContent('2Area18')
+    expect(sections[2]).toHaveTextContent('3Lorville')
   })
 
-  it('sorts by profit, ROI, margin and investment', async () => {
+  it('lists buy options ranked by profit; each line names its sell stop; skips are badged', () => {
+    seed({ offers, commodities })
+    render(<TradesView />)
+    const first = lines(1)
+    expect(first).toHaveLength(3)
+    expect(first[0]).toHaveTextContent('Beta')
+    expect(first[0]).toHaveTextContent('→ #3 CBD Lorville')
+    expect(first[1]).toHaveTextContent('Alpha')
+    expect(first[1]).toHaveTextContent('→ #3 CBD Lorville')
+    expect(first[1]).toHaveTextContent('SKIPS 1')
+    expect(first[2]).toHaveTextContent('Alpha')
+    expect(first[2]).toHaveTextContent('→ #2 TDD Area 18')
+    expect(first[2]).not.toHaveTextContent('SKIPS')
+    // profits: Beta 46×60, Alpha→3 46×50, Alpha→2 46×30
+    expect(profits(1)).toEqual(['2,760', '2,300', '1,380'])
+  })
+
+  it('shows allowed box sizes next to the commodity name without expanding (criterion 9)', () => {
+    seed({
+      offers: [
+        buyOffer(1, 1, 100, { containerSizes: [8, 16] }),
+        sellOffer(1, 2, 150),
+        buyOffer(2, 1, 100),
+        sellOffer(2, 2, 140),
+      ],
+      commodities: [commodity(1, { name: 'Bulky' }), commodity(2, { name: 'Handy' })],
+      stops: [1, 2],
+    })
+    render(<TradesView />)
+    const [bulky, handy] = lines(1)
+    // Bulky: 40 SCU × 50 = 2,000; Handy: 46 SCU × 40 = 1,840
+    expect(bulky).toHaveTextContent('Bulky □ 8·16')
+    expect(handy).toHaveTextContent('Handy □ 1·2·4·8·16')
+    expect(within(bulky).getByRole('button')).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  it('says what to do at stops without options and at the final stop', () => {
+    seed({
+      offers: [buyOffer(1, 1, 100), sellOffer(1, 3, 150)],
+      commodities: [commodity(1, { name: 'Alpha' })],
+    })
+    render(<TradesView />)
+    expect(within(section(2)).getByText('Nothing profitable to buy here')).toBeInTheDocument()
+    expect(within(section(3)).getByText('Final stop — sell only')).toBeInTheDocument()
+    expect(within(section(3)).queryByRole('list')).not.toBeInTheDocument()
+  })
+
+  it('shows the top 5 and expands the rest with "Show N more"', async () => {
+    const many = Array.from({ length: 8 }, (_, i) => commodity(i + 1, { name: `Item ${i + 1}` }))
+    const manyOffers = many.flatMap((c) => [buyOffer(c.id, 1, 100), sellOffer(c.id, 2, 100 + c.id)])
+    seed({ offers: manyOffers, commodities: many, stops: [1, 2] })
+    const user = userEvent.setup()
+    render(<TradesView />)
+    expect(lines(1)).toHaveLength(5)
+    expect(lines(1)[0]).toHaveTextContent('Item 8')
+    await user.click(within(section(1)).getByRole('button', { name: 'Show 3 more' }))
+    expect(lines(1)).toHaveLength(8)
+    await user.click(within(section(1)).getByRole('button', { name: 'Show fewer' }))
+    expect(lines(1)).toHaveLength(5)
+  })
+
+  it('sorts all stops by ROI, margin per SCU and investment (all descending)', async () => {
     seed({
       offers: [
         buyOffer(1, 1, 100),
@@ -343,7 +297,7 @@ describe('single hauls', () => {
     })
     const user = userEvent.setup()
     render(<TradesView />)
-    const order = () => screen.getAllByRole('heading', { level: 4 }).map((h) => h.textContent)
+    const order = () => lines(1).map((l) => l.querySelector('strong')?.textContent)
     expect(order()).toEqual(['Big', 'Mid', 'Cheap'])
     await user.selectOptions(screen.getByLabelText('Sort by'), 'ROI')
     expect(order()).toEqual(['Cheap', 'Mid', 'Big'])
@@ -353,46 +307,132 @@ describe('single hauls', () => {
     expect(order()).toEqual(['Big', 'Mid', 'Cheap'])
   })
 
-  it('paginates after 30 items with "Show more"', async () => {
-    const commodities = Array.from({ length: 35 }, (_, i) =>
-      commodity(i + 1, { name: `Item ${i + 1}` }),
-    )
-    const offers = commodities.flatMap((c) => [
-      buyOffer(c.id, 1, 100),
-      sellOffer(c.id, 2, 100 + c.id),
-    ])
-    seed({ offers, commodities, stops: [1, 2] })
+  it('has no plan chips or timeline', () => {
+    seed({ offers, commodities })
+    render(<TradesView />)
+    expect(screen.queryByRole('tablist')).not.toBeInTheDocument()
+    expect(screen.queryByText('Plans')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Execution timeline/)).not.toBeInTheDocument()
+    expect(screen.queryByText('MAX')).not.toBeInTheDocument()
+  })
+
+  it('shows small non-interactive badges (max 3 plus a +n chip)', () => {
+    seed({ offers, commodities })
+    render(<TradesView />)
+    const beta = lines(1)[0]
+    expect(beta).toHaveTextContent('ILLEGAL')
+    expect(beta).toHaveTextContent('SKIPS 1')
+    expect(beta).toHaveTextContent('NO STOCK?')
+    expect(beta).toHaveTextContent('LOW DEMAND?')
+    expect(lines(1)[1]).toHaveTextContent('STALE 9d')
+    // Beta: ILLEGAL, SKIPS 1, NO STOCK?, LOW DEMAND? → the fourth sits behind a +1 chip
+    expect(beta.querySelector('.badge--more')).toHaveTextContent('+1')
+    expect(beta.querySelectorAll('.badge--extra')).toHaveLength(1)
+    // the only button on the line is the line itself
+    expect(within(beta).getAllByRole('button')).toHaveLength(1)
+  })
+})
+
+describe('expanded option line', () => {
+  it('toggles on tap and shows every field (criterion 10) including a skip option', async () => {
+    seed({
+      offers: [
+        buyOffer(1, 1, 2810, { dateModified: ago(0.4), statusBuy: 3, scuBuy: 0, scuBuyAvg: 54 }),
+        sellOffer(1, 3, 3315, {
+          dateModified: ago(2),
+          statusSell: 5,
+          scuSell: 14,
+          scuSellStock: 2,
+        }),
+      ],
+    })
     const user = userEvent.setup()
     render(<TradesView />)
-    expect(screen.getAllByRole('article')).toHaveLength(30)
-    expect(screen.getByText('Single hauls').parentElement).toHaveTextContent('35')
-    await user.click(screen.getByRole('button', { name: 'Show more (5 left)' }))
-    expect(screen.getAllByRole('article')).toHaveLength(35)
-    expect(screen.queryByRole('button', { name: /Show more/ })).not.toBeInTheDocument()
+    const line = lines(1)[0]
+    expect(within(line).queryByText('Buy / SCU')).not.toBeInTheDocument()
+    await user.click(within(line).getByRole('button'))
+    expect(within(line).getByRole('button')).toHaveAttribute('aria-expanded', 'true')
+    expect(line).toHaveTextContent('Buy / SCU2,810')
+    expect(line).toHaveTextContent('Sell / SCU3,315')
+    expect(line).toHaveTextContent('Margin / SCU505')
+    expect(line).toHaveTextContent('Quantity46 of 46 SCU')
+    expect(line).toHaveTextContent('□ 1·2·4·8·16 — 2×16 + 1×8 + 1×4 + 1×2 = 5 boxes')
+    expect(line).toHaveTextContent('Investment129,260')
+    expect(line).toHaveTextContent('Revenue152,490')
+    expect(line).toHaveTextContent('Profit23,230')
+    expect(line).toHaveTextContent('ROI18.0%')
+    expect(line).toHaveTextContent('LegalityLEGAL')
+    expect(line).toHaveTextContent('buy 9h · sell 2d')
+    expect(line).toHaveTextContent('SKIPS 1')
+    expect(line).toHaveTextContent('Reported — buy: LO · 54 SCU · sell: HI · 14 SCU · stock 2')
+    await user.click(within(line).getByRole('button', { name: /Laranite/ }))
+    expect(within(line).queryByText('Buy / SCU')).not.toBeInTheDocument()
   })
 
-  it('never shows raw commodities (criterion 5)', () => {
+  it('shows unused SCU with the minimum box when the range leaves a gap', async () => {
     seed({
-      offers: [buyOffer(1, 1, 100), sellOffer(1, 2, 200)],
-      commodities: [commodity(1, { name: 'Raw Ore', isRaw: true })],
+      offers: [buyOffer(1, 1, 100), sellOffer(1, 2, 150)],
+      stops: [1, 2],
+      boxMin: 4,
+    })
+    const user = userEvent.setup()
+    render(<TradesView />)
+    await user.click(within(lines(1)[0]).getByRole('button'))
+    expect(lines(1)[0]).toHaveTextContent('Quantity44 of 46 SCU')
+    expect(lines(1)[0]).toHaveTextContent('2 SCU unused · min box 4')
+    expect(lines(1)[0]).toHaveTextContent('2×16 + 1×8 + 1×4 = 4 boxes')
+  })
+
+  it('explains inventory warnings with the reported values and age instead of tappable badges', async () => {
+    seed({
+      offers: [
+        buyOffer(1, 1, 1000, {
+          statusBuy: 1,
+          scuBuy: 0,
+          scuBuyAvg: 0,
+          dateModified: ago(0.375), // 9 h
+        }),
+        sellOffer(1, 2, 1100, { statusSell: 6 }),
+      ],
+      stops: [1, 2],
+    })
+    const user = userEvent.setup()
+    render(<TradesView />)
+    const line = lines(1)[0]
+    expect(line).toHaveTextContent('NO STOCK?')
+    await user.click(within(line).getByRole('button'))
+    const notes = within(line).getAllByRole('note')
+    expect(notes[0]).toHaveTextContent(
+      'Reported 9 h ago at the buy stop: stock Out of Stock (0–14 %), 0 SCU. Inventory may have refilled since.',
+    )
+    expect(notes[1]).toHaveTextContent('demand Very High (72–85 %)')
+  })
+
+  it('keeps a NO STOCK? haul at full quantity (criterion 13)', () => {
+    seed({
+      offers: [
+        buyOffer(1, 1, 1000, { statusBuy: 1, scuBuy: 0, scuBuyAvg: 0 }),
+        sellOffer(1, 2, 1100),
+      ],
       stops: [1, 2],
     })
     render(<TradesView />)
-    expect(screen.queryByText('Raw Ore')).not.toBeInTheDocument()
-    expect(screen.getByText('No profitable trades along this route.')).toBeInTheDocument()
+    expect(lines(1)).toHaveLength(1)
+    expect(lines(1)[0]).toHaveTextContent('NO STOCK?')
+    expect(profits(1)).toEqual(['4,600'])
   })
 
-  it('recomputes immediately when inputs change (criterion 4)', () => {
-    seed({
-      offers: [buyOffer(1, 1, 100), sellOffer(1, 2, 200)],
-      stops: [1, 2],
-    })
+  it('recomputes immediately when inputs change (criterion 4)', async () => {
+    seed({ offers: [buyOffer(1, 1, 100), sellOffer(1, 2, 200)], stops: [1, 2] })
+    const user = userEvent.setup()
     const { unmount } = render(<TradesView />)
-    expect(screen.getByRole('article')).toHaveTextContent('Quantity46 of 46 SCU')
+    expect(profits(1)).toEqual(['4,600'])
     unmount()
     useAppStore.setState({ freeScu: 10 })
     render(<TradesView />)
-    expect(screen.getByRole('article')).toHaveTextContent('Quantity10 of 10 SCU')
+    expect(profits(1)).toEqual(['1,000'])
+    await user.click(within(lines(1)[0]).getByRole('button'))
+    expect(lines(1)[0]).toHaveTextContent('Quantity10 of 10 SCU')
   })
 })
 
