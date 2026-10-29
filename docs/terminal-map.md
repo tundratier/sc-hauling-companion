@@ -1,6 +1,6 @@
 # Terminal map — design and distance-call analysis (phase 1)
 
-Status: phase 1 (research, design, probe), revision 3 · Written: 2026-10-29 · Game version analysed: Star Citizen LIVE 4.10.2
+Status: phase 2 (compiler built, 4.10.2 compiled), revision 4 · Written: 2026-10-29 · Game version analysed: Star Citizen LIVE 4.10.2
 
 Goal: a deterministic, pre-compiled 2D map of terminal locations, computed with MDS from UEX distance data and imported by the app like the caches in `src/api/`. Later uses (the data is designed for them, nothing is built yet): distance between two terminals, terminals along a route, drawing the graph.
 
@@ -179,7 +179,7 @@ A 2D embedding needs far fewer than all pairs, but here all of them cost nothing
 
 1. **Points are orbits, not nodes.** Matrix `D` over the distinct orbits of the system's nodes (Stanton 25 × 25), integer Gm from `orbits_distances`. Asymmetric pairs use the mean of both directions, duplicate rows the last one by `date_modified`. A missing pair (§3.2) gets weight 0.
 2. **Initialization:** classical (Torgerson) MDS: double-centre `−½ J D² J`, `eigh`, two largest eigenpairs (missing pairs filled with the shortest path for this step only). No randomness, no restarts.
-3. **Refinement:** weighted SMACOF (stress majorization) from that start, fixed maximum of 500 iterations, relative tolerance 1e-9. Weight `w_ij = 1 / d_ij` favours the short distances; since the data is rounded to 1 Gm, short pairs carry the largest relative rounding error, so the weighting (`1/d`, `1/√d` or uniform) is picked once on the measured stress in phase 2 and then fixed in the file's `generator` block.
+3. **Refinement:** weighted SMACOF (stress majorization) from that start, fixed maximum of 500 iterations, relative tolerance 1e-9. Weight `w_ij = 1 / d_ij` favours the short distances; since the data is rounded to 1 Gm, short pairs carry the largest relative rounding error, so the weighting was compared on the real 4.10.2 data (stress-1 / mean relative error: uniform 0.0080 / 0.0105 Stanton, `1/√d` 0.0080 / 0.0101, `1/d` 0.0083 / 0.0098; Pyro and Nyx differ in the 4th decimal). The differences are negligible, **`1/d` is fixed** (best mean error) and recorded in the file's `generator` block.
 4. **Why SMACOF on top of classical MDS:** the data is 3D reported distances projected to 2D, with rounding and occasional stale values. Classical MDS truncates eigenvalues; SMACOF minimises the actual stress.
 5. **Nodes from orbits:** every node takes the 2D point of its orbit. Nodes that share an orbit are then spread with the 0.15 Gm rule (§5.3).
 6. **Quality metrics** (per system, §5.2): `stress1` (Kruskal stress-1), mean and max relative pair error, `planarShare` = (λ₁+λ₂)/Σ positive λ from the classical step (how 2D the system really is).
@@ -207,16 +207,17 @@ Same input → byte-identical output:
   "schemaVersion": 1,
   "gameVersion": "4.10.2",
   "units": "Gm",
-  "generator": { "source": "orbits_distances", "weights": "1/d", "iterations": 500,
-                 "jumpCost": 70, "coOrbitSpread": 0.15 },
+  "generator": { "source": "orbits_distances", "weights": "1/d", "maxIterations": 500,
+                 "jumpCost": 70, "coOrbitSpread": 0.15, "panelGap": 20 },
   "systems": [
     {
       "id": 68, "name": "Stanton",
       "orbitIds": [4, 59, 116, 190, 326],                       // matrix order
       "distances": [ [0, 1, 42], [0, 2, 23] ],                   // [i, j, Gm] i < j over orbitIds, as reported
+      "estimated": [],                                           // [i, j, Gm] pairs without a usable report: distance of the fitted points, flagged
       "layout": { "cx": 0.0, "cy": 0.0, "rotationDeg": 0.0 },   // panel in the combined map (§5.4)
-      "quality": { "stress1": 0.031, "meanRelError": 0.04, "maxRelError": 0.31, "planarShare": 0.97,
-                   "pairs": 300, "estimatedPairs": 0, "oldestRowVersion": "4.3.2" }
+      "quality": { "stress1": 0.0083, "meanRelError": 0.0098, "maxRelError": 0.3108, "planarShare": 0.9728,
+                   "pairs": 300, "estimatedPairs": 0, "oldestRowVersion": "4.3.2", "newestRowVersion": "4.7.1" }
     }
   ],
   "nodes": [
@@ -261,22 +262,40 @@ Answered by the probe: orbit-derived (yes), symmetric (yes), `orbits_distances` 
 
 1. **Please confirm the travel rules (§2.5):** (a) member ↔ member inside one group is direct (the rule only says planet → members); (b) "the system can be left from any location" is read as "from any member you can go straight to a planet or gateway of another group" (planetary system, not star system; the graph handles both the same way); (c) the 0.15 Gm spread also covers stations that sit on their planet's orbit, not only moons.
 2. **Age of the data:** the orbit rows were reported in game versions 3.24 – 4.10.2 (most 4.3.2 – 4.7.1). If a body moved, old rows are wrong; the compiler reports the oldest version per system and cannot fix it.
-3. **Future coverage:** Pyro's table covers only 716 of 903 orbit pairs today (all pairs between our node orbits, but new stations will have gaps); §3.2 lists the fallbacks.
+3. **Future coverage:** Pyro's table covers only 716 of 903 orbit pairs today (all pairs between our node orbits, but new stations will have gaps); §3.2 lists the fallbacks. In 4.10.2 one pair is unusable: Pyro IV ↔ Pyro V is reported as **0 Gm** (game version 4.7), which cannot be right for two planets. The compiler treats 0 Gm between different orbits as missing, fits the pair from the other 15 distances and lists it in `estimated` (Pyro `estimatedPairs: 1`).
 4. **Jump cost** is the constant 70 Gm (`generator.jumpCost`).
 5. **Terra Gateway** has no jump partner in 4.10.2 (§2.3); the node stays.
 6. **Data quirks** seen: terminal rows with a wrong `id_orbit` (Chawla's Beach), two terminals without any location id, Pyro V is a planet node that only has an item terminal while its moons have commodity terminals, 10 `PYAM-*` stations and `INS Jericho` exist in the metadata without terminals (not nodes).
 7. **Scale and resolution:** distances are whole Gm, moon spread is 0.15 Gm, planet-to-planet distances are tens of Gm, so the combined map needs zoom and the moon positions are a display convention, not data.
 
-## 7. Probe (done) and next step
+## 7. Probe (done) and the 4.10.2 result
 
-The probe of 8 calls ran once on 2026-10-29 (`compile.py --probe`: a fixed list that refuses to run twice and the only distance requests the tool can make). Its results are §1.1 and §1.2. Phase 2 is a compiler that reads the raw files and metadata, makes **no API calls** for 4.10.2, and writes `src/data/terminalMap/4.10.2.json` (§5) with `--check`; it starts only on the product owner's go-ahead. The feature stays on its branch until the main app uses it.
+The probe of 8 calls ran once on 2026-10-29 (`compile.py --probe`: a fixed list that refuses to run twice and the only distance requests the tool can make). Its results are §1.1 and §1.2.
+
+The compiler (phase 2) reads the committed raw files and makes **no API calls**. Result for 4.10.2, `src/data/terminalMap/4.10.2.json` (37 KB):
+
+| System | Nodes | Orbit points | Reported pairs | Estimated | stress-1 | Mean rel. error | Planar share | Row versions |
+|---|---:|---:|---:|---:|---:|---:|---:|---|
+| Stanton | 42 | 25 | 300 | 0 | 0.0083 | 1.0 % | 97.3 % | 4.3.2 – 4.7.1 |
+| Pyro | 22 | 17 | 135 | 1 | 0.0091 | 0.85 % | 97.5 % | 4.3.2 – 4.10.2 |
+| Nyx | 7 | 7 | 21 | 0 | 0.0050 | 0.48 % | 99.3 % | 4.4 – 4.7.1 |
+
+The systems are almost exactly planar (97–99 % of the variance in two dimensions), so the 2D map reproduces the reported distances to about 1 %. The largest single error (Stanton 31 %) is a 1 Gm pair (Ita ↔ the HUR Lagrange stations, 0.3 Gm off), where the 1 Gm rounding of the source dominates. Combined layout: the three panel centres sit on a circle at −90° (Nyx), 30° (Pyro) and 150° (Stanton), each panel rotated towards the panels its gateways lead to.
+
+The app side is only the data access: `src/data/terminalMap/types.ts` (the shape of §5.2) and `index.ts` (`loadTerminalMap(gameVersion)`: exact version, else the newest older map with `exact: false`, else null). Nothing uses it yet; the feature stays on its branch until the main app does.
 
 ## 8. Tooling in this repo
 
 ```bash
+docker compose run --rm terminal-map --compile                       # raw/<newest version>/ -> src/data/terminalMap/<version>.json (offline)
+docker compose run --rm terminal-map --check                         # fail if the committed file differs from a fresh compile (offline)
+docker compose run --rm terminal-map-test                            # Python tests (MDS, frame, ring, whole-map checks, determinism)
 docker compose run --rm terminal-map --dry-run                       # nodes, groups, request counts of the (old) terminal-pair schemes
-docker compose run --rm terminal-map --dry-run --types commodity     # commodity-only scope
-docker compose run --rm terminal-map --probe                         # the 8 fixed probe requests (already run once)
+docker compose run --rm terminal-map --snapshot --game-version 4.11  # trimmed metadata -> raw/4.11/metadata.json (8 metadata requests)
 ```
 
-`uex_get` in `compile.py` refuses `terminals_distances` / `orbits_distances`; only `probe()` may call them, with its fixed list. Metadata is cached in `tools/terminal-map/cache/<gameVersion>/meta/` (git-ignored), raw distance responses live in `tools/terminal-map/raw/<gameVersion>/` (committed). Under Git Bash prefix `docker compose run` with `MSYS_NO_PATHCONV=1` when passing `/work/...` paths.
+Files in `tools/terminal-map/`: `compile.py` (CLI, guarded UEX access, probe), `nodes.py` (metadata snapshot, nodes, groups, jump edges), `mapbuild.py` (distance rows, per-system fit, co-orbit spread, layout, output), `mds.py` (classical MDS, weighted SMACOF, canonical frame), `test_terminal_map.py`, `raw/<version>/` (committed input: `metadata.json`, `probe.jsonl` with the `orbits_distances` rows), `cache/` (git-ignored scratch). `uex_get` refuses `terminals_distances` / `orbits_distances`; only `probe()` may call them, with its fixed list.
+
+**For a new game version** (needs the product owner's go-ahead for the 3 distance calls): `--snapshot`, then fetch the three `orbits_distances` responses into `raw/<version>/` (the fetch step is the one piece not built, since the only version so far is 4.10.2 and its data is in `probe.jsonl`), `--compile`, review `estimated` and `oldestRowVersion`, commit raw and output together.
+
+Under Git Bash prefix `docker compose run` with `MSYS_NO_PATHCONV=1` when passing `/work/...` paths.
