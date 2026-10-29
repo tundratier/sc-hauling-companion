@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.1.0 - 2026-10-29
+
+### Features
+
+- **calc:** Compare skip hauls with trading via the skipped stops
+- **results:** Show how skip lines compare with trading via the skipped stops
+
+### Bug Fixes
+
+- **results:** Name the comparison chain's stops in the skip verdict
+
 ## 1.0.1 - 2026-10-28
 
 ### Build and CI
