@@ -164,6 +164,7 @@ export function generateCandidates(
           sellAgeDays: sellAge,
           reported: reportedInventory(buy, sell),
           flags,
+          stopovers: null,
         })
       }
     }
