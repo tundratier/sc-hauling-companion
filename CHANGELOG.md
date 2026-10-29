@@ -1,5 +1,35 @@
 # Changelog
 
+## 1.2.0 - 2026-10-29
+
+### Features
+
+- **calc:** Compute the best haul profit for every ordered terminal pair
+- **route:** Search the best profitable stops to insert between the fixed stops
+- **api:** Load the terminal map lazily and cache it per game version
+- **route:** Persist the add-profitable-stops options and accept suggested stops
+- **route:** Run the stop search in a Web Worker with a latest-request-only client
+- **route:** Suggest profitable stops in the route list with Add, Add all and dismiss
+- **trades:** Collapse worse skip lines into one compact dimmed row
+
+### Bug Fixes
+
+- **route:** Keep accepted dynamic stops counting towards the suggestion limits
+
+### Build and CI
+
+- **terminal-map:** Add dry-run compiler and compose service
+- **terminal-map:** Plan the routing set and ignore stations without an orbit
+- **terminal-map:** Add the fixed distance probe and its raw responses
+- **terminal-map:** Compile the map with MDS from the committed raw data
+- **terminal-map:** Add the orbits_distances fetch step for new game versions
+- **terminal-map:** Serve the map from public/ with a travel table (schema 2)
+- Ignore Claude worktrees in vitest, oxlint and prettier
+
+### Miscellaneous
+
+- **terminal-map:** Add the compiled 4.10.2 map data and its loader
+
 ## 1.1.0 - 2026-10-29
 
 ### Features
