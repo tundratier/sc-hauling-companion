@@ -1,5 +1,5 @@
 import { useId, useState, type ReactNode } from 'react'
-import type { Haul } from '../calc'
+import type { Haul, StopoverLeg } from '../calc'
 import type { Terminal } from '../domain/types'
 import { formatAgeDays, formatInt, formatPercent, formatSigned } from '../lib/format'
 import { activeWarnings, describeWarning, reportedSummary } from '../lib/inventoryText'
@@ -41,15 +41,33 @@ export function skippedStops(haul: Haul): string {
   return haul.to === first ? `#${first}` : `#${first}–#${haul.to}`
 }
 
-/** `▲ 4,200 more than via #2` / `▼ 3,100 less than via #2` / `= same as via #2` */
+/** The chain's trades as stop paths, 1-based: "#4 → #5", "#2 → #3 → #5", "#2 → #3, #4 → #5". */
+export function chainPath(legs: StopoverLeg[]): string {
+  const paths: number[][] = []
+  for (const leg of legs) {
+    const last = paths[paths.length - 1]
+    if (last && last[last.length - 1] === leg.from) last.push(leg.to)
+    else paths.push([leg.from, leg.to])
+  }
+  return paths.map((p) => p.map((s) => `#${s + 1}`).join(' → ')).join(', ')
+}
+
+/**
+ * `▲ 4,200 more than #2 → #3` / `▼ 3,100 less than #4 → #5` / `= same as #2 → #3`, or
+ * `▲ 4,200 more · no trades via #2–#3` when no skipped stop has a profitable trade.
+ */
 export function stopoverVerdict(haul: Haul): { text: string; better: boolean | null } | null {
   const cmp = haul.stopovers
   if (!cmp) return null
-  const via = `via ${skippedStops(haul)}`
-  if (cmp.delta === 0) return { text: `= same as ${via}`, better: null }
+  const amount = formatInt(Math.abs(cmp.delta))
+  if (cmp.legs.length === 0) {
+    return { text: `▲ ${amount} more · no trades via ${skippedStops(haul)}`, better: true }
+  }
+  const path = chainPath(cmp.legs)
+  if (cmp.delta === 0) return { text: `= same as ${path}`, better: null }
   const better = cmp.delta > 0
   return {
-    text: `${better ? '▲' : '▼'} ${formatInt(Math.abs(cmp.delta))} ${better ? 'more' : 'less'} than ${via}`,
+    text: `${better ? '▲' : '▼'} ${amount} ${better ? 'more' : 'less'} than ${path}`,
     better,
   }
 }
@@ -224,7 +242,7 @@ export function OptionLine({
           </div>
           {haul.stopovers && (
             <div className="option__stopovers">
-              <span className="label">Trading via {skippedStops(haul)} instead</span>
+              <span className="label">Instead of skipping</span>
               {haul.stopovers.legs.length > 0 ? (
                 <div className="option__legs num">
                   {haul.stopovers.legs.map((leg) => (
