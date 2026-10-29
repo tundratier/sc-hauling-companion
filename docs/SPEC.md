@@ -6,6 +6,8 @@ This document is the single source of truth for implementing v1.0. It is written
 
 ### Revision history
 
+**Revision 11 (2026-10-29)** — the skip verdict names the stops the comparison chain trades at (`#4 → #5`), not the skipped stops, which misread as the chain (§7.5).
+
 **Revision 10 (2026-10-29)** — skip lines are compared with the best chain of trades via the skipped stops: calculation in §6.6, a verdict row on the collapsed line and the chain's legs in the details (§7.5), acceptance criterion 16, tests (§8.1).
 
 **Revision 9 (2026-10-28)** — deployment to GitHub Pages on every push to `master` (§2.1, §9.3): `check` and `dist` Docker stages, `BASE_PATH` build arg mapped to Vite `base`.
@@ -537,14 +539,14 @@ These values are a starting point. Tune them in the browser to match the warm-wh
   - Row 2: `→ #3 TDD Area 18` — sell stop number + short terminal name (`nickname`, falling back to `displayname`), followed by **all badges** (`SKIPS 1`, `ILLEGAL`, warnings …).
   - **Buy and sell price per SCU**, always visible without expanding: `BUY 2,810 → SELL 3,315 /SCU`. Labels in `--amber-dim`, values in `--amber`, tabular numerals.
   - **Profit** for the full load (`--amber-bright`, right-aligned) and ROI %.
-  - **Skip lines only** — a fourth row, full width, 13 px mono, compares the line with trading via the skipped stops (§6.6): `▲ 1,000 more than via #2` in `--amber`, `▼ 460 less than via #2–#3` in `--warn`, or `= same as via #2`. Skipped stops are 1-based, a range when several.
+  - **Skip lines only** — a fourth row, full width, 13 px mono, compares the line with trading via the skipped stops (§6.6): `▲ 1,000 more than #1 → #2 → #3` in `--amber`, `▼ 460 less than #4 → #5` in `--warn`, or `= same as #1 → #2`. The stops are those of the **comparison chain's trades** (1-based), not the skipped stops: consecutive legs form one path, gaps (segments that carry nothing) separate paths with `, ` (`#2 → #3, #4 → #5`). For a haul #2 → #5 whose best chain is only Quartz #4 → #5, the row reads `… than #4 → #5`. If no skipped stop has a profitable trade: `▲ 12,000 more · no trades via #2–#3` (here the skipped stops, a range when several).
   - Example layout at 360 px (illustrative values):
 
     ```
     Laranite □ 4·8·16                  [ DETAILS ⌄ ]
     → #3 TDD Area 18 [SKIPS 1] [ILLEGAL] +22,220 aUEC
     BUY 2,810 → SELL 3,315 /SCU             18.0 %
-    ▲ 1,000 more than via #2
+    ▲ 1,000 more than #1 → #2 → #3
     ```
 - **Details button** — it must clearly look like a button, unlike the bare `v` of revision 4:
   - **Label:** text `DETAILS` plus a chevron; when open, `HIDE` plus the chevron rotated 180°. Uppercase mono, 12 px, `--amber`.
@@ -564,7 +566,7 @@ These values are a starting point. Tune them in the browser to match the warm-wh
   - Quantity (`44 of 46 SCU`, plus "2 SCU unused · min box 4" when applicable) and the box breakdown with count.
   - Investment, revenue, profit, ROI.
   - Price ages for both rows.
-  - Skip lines: "Trading via #2 instead" with one row per chain leg (`#1 → #2 Agricium 4,000`) or "No profitable trade sells at #2.", then the fields Via stops, Skipping (the line's profit) and Difference (signed).
+  - Skip lines: "Instead of skipping" with one row per chain leg (`#1 → #2 Agricium 4,000`) or "No profitable trade sells at #2.", then the fields Via stops, Skipping (the line's profit) and Difference (signed).
   - Reported inventory with its explanation, e.g. "Reported 9 h ago: stock Out of Stock (0–14 %), 0 SCU. Inventory may have refilled since." This replaces the tappable badges.
 - **Badges** are small, non-interactive chips: height ≈ 18–20 px, font 11 px uppercase, padding 0 6 px, 1 px outline. They are **not** touch targets.
   - Types: `ILLEGAL` (`--warn` fill), `SKIPS n` (amber outline), `STALE 9d`, `VOLATILE`.
