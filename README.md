@@ -34,6 +34,15 @@ docker compose run --rm test npm run test -- --run --coverage   # coverage repor
 docker compose run --rm dev npm run format                      # prettier
 ```
 
+Terminal map compiler (design in [`docs/terminal-map.md`](docs/terminal-map.md); Python in its own
+image, never touches the host). It compiles the committed raw UEX data into
+`public/terminal-map/<gameVersion>.json` plus `index.json`, which the app fetches at runtime:
+
+```bash
+docker compose run --rm terminal-map --compile   # raw -> public/terminal-map (offline)
+docker compose run --rm terminal-map --check     # fail if the committed files differ from a fresh compile
+```
+
 ## Deployment
 
 Every push to `master` (i.e. every git flow release or hotfix) runs

@@ -1113,3 +1113,114 @@ select.input:disabled {
 .option__details-btn[aria-expanded='true'] .option__details-icon {
   transform: rotate(180deg);
 }
+
+/* ---- Add profitable stops (SPEC §7.4) ---- */
+.stop--suggested {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  border-style: dashed;
+  border-color: var(--amber-dim);
+  background: transparent;
+}
+
+.stop--suggested .stop__tag {
+  grid-column: 1 / -1;
+  justify-self: start;
+  margin-left: 4px;
+}
+
+.stop__role {
+  color: var(--amber);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+
+.stop--suggested .stop__actions .btn {
+  min-width: var(--tap);
+  width: auto;
+  padding: 0 12px;
+}
+
+.suggest__summary {
+  padding-top: 10px;
+  border-top: 1px dashed var(--amber-dim);
+}
+
+.suggest__title {
+  color: var(--amber);
+}
+
+.suggest__settings-btn {
+  align-self: flex-start;
+}
+
+/* Accepted dynamic stop: badge after the terminal name (SPEC §7.4) */
+.stop__badge {
+  margin-left: 8px;
+  vertical-align: 1px;
+}
+
+/* Worse skip line (SPEC §7.5): one compact, dimmed row — commodity, sell stop, profit, verdict.
+   Dimmed, not disabled: ~70 % opacity, still ≥ 44 px tall and readable. The full layout returns
+   while the details are open or the line is marked as bought. */
+.option--compact {
+  opacity: 0.7;
+}
+
+/* Inline flow: the text wraps around a float that reserves room for the DETAILS button only
+   on the first rows, so the verdict can use the full width below it. */
+.option--compact .option__line {
+  display: block;
+  padding: 4px 10px;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--amber-dim);
+}
+
+.option--compact .option__line::before {
+  content: '';
+  float: right;
+  width: 98px;
+  height: 36px;
+}
+
+.option--compact .option__line > * {
+  display: inline;
+  margin-right: 10px;
+}
+
+.option--compact .option__name {
+  padding-right: 0;
+  min-height: 0;
+  font-weight: 400;
+}
+
+.option--compact .option__name strong {
+  font-weight: 500;
+  color: var(--amber-dim);
+}
+
+.option--compact .option__profit,
+.option--compact .option__profit.num--primary {
+  color: var(--amber);
+  font-size: 0.9375rem;
+}
+
+.option--compact .option__via {
+  color: var(--warn);
+  font-size: 0.8125rem;
+  opacity: 0.85;
+}
+
+/* keep "→ #8 TDD Orison" and the verdict together instead of breaking inside them */
+.option--compact .option__sell,
+.option--compact .option__via {
+  display: inline-block;
+  vertical-align: baseline;
+}
+
+.option--compact .option__sell {
+  white-space: nowrap;
+}

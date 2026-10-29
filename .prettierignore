@@ -5,3 +5,6 @@ package-lock.json
 CHANGELOG.md
 docs
 src/__fixtures__
+public/terminal-map/*.json
+tools/terminal-map/raw
+.claude

@@ -4,3 +4,7 @@ coverage
 .vite
 *.local
 *.tsbuildinfo
+
+# terminal map compiler: fetched metadata (re-creatable, see docs/terminal-map.md)
+tools/terminal-map/cache/
+__pycache__/

@@ -1,9 +1,11 @@
-import type { PriceOffer, Terminal } from '../domain/types'
+import type { Commodity, PriceOffer, Terminal } from '../domain/types'
 import { STD_BOX_SIZES } from '../domain/types'
 import { decomposeBoxes, maxFillable } from './boxes'
 import type {
+  BoxRange,
   CalcData,
   CalcInput,
+  CalcOptions,
   DroppedCounts,
   Haul,
   HaulFlags,
@@ -27,6 +29,46 @@ function terminalSizes(
   if (rowSizes.length > 0) return rowSizes
   const max = terminal?.maxContainerSize ?? 0
   return max > 0 ? STD_BOX_SIZES.filter((s) => s <= max) : STD_BOX_SIZES
+}
+
+/** Which option filter drops a profitable pair, if any (counted so the UI can say why). */
+export function filterReason(
+  commodity: Commodity,
+  buy: PriceOffer,
+  sell: PriceOffer,
+  options: CalcOptions,
+  nowSec: number,
+): 'illegal' | 'volatileQt' | 'priceAge' | null {
+  if (!options.includeIllegal && commodity.isIllegal) return 'illegal'
+  if (!options.includeVolatileQt && commodity.isVolatileQt) return 'volatileQt'
+  if (options.maxPriceAgeDays !== null) {
+    const buyAge = ageDays(buy, nowSec)
+    const sellAge = ageDays(sell, nowSec)
+    if (
+      buyAge === null ||
+      sellAge === null ||
+      buyAge > options.maxPriceAgeDays ||
+      sellAge > options.maxPriceAgeDays
+    ) {
+      return 'priceAge'
+    }
+  }
+  return null
+}
+
+/** B = STD ∩ buy sizes ∩ sell sizes ∩ ship sizes ∩ [min, max] (§6.3); `usable` is B before the range. */
+export function allowedBoxes(
+  buy: PriceOffer,
+  sell: PriceOffer,
+  buyTerminal: Terminal | undefined,
+  sellTerminal: Terminal | undefined,
+  ship: readonly number[],
+  range: BoxRange,
+): { usable: number[]; boxSizes: number[] } {
+  const buySizes = terminalSizes(buy.containerSizes, buyTerminal)
+  const sellSizes = terminalSizes(sell.containerSizes, sellTerminal)
+  const usable = intersect(intersect(intersect(STD_BOX_SIZES, buySizes), sellSizes), ship)
+  return { usable, boxSizes: usable.filter((s) => s >= range.min && s <= range.max) }
 }
 
 export function reportedInventory(buy: PriceOffer, sell: PriceOffer): ReportedInventory {
@@ -66,7 +108,7 @@ export function generateCandidates(
   if (stops.length < 2 || !(cap >= 1)) return { hauls, dropped }
 
   const shipSizes = input.shipBoxSizes && input.shipBoxSizes.length > 0 ? input.shipBoxSizes : null
-  const { min: minBox, max: maxBox } = input.boxRange
+  const { min: minBox } = input.boxRange
   const ship = shipSizes ?? STD_BOX_SIZES
 
   for (let i = 0; i < stops.length - 1; i++) {
@@ -84,34 +126,23 @@ export function generateCandidates(
         const margin = sell.priceSell - buy.priceBuy
         if (!(margin > 0)) continue
 
-        // option filters (counted so the UI can say why trades are missing)
-        if (!options.includeIllegal && commodity.isIllegal) {
-          dropped.illegal++
-          continue
-        }
-        if (!options.includeVolatileQt && commodity.isVolatileQt) {
-          dropped.volatileQt++
+        const reason = filterReason(commodity, buy, sell, options, nowSec)
+        if (reason) {
+          dropped[reason]++
           continue
         }
         const buyAge = ageDays(buy, nowSec)
         const sellAge = ageDays(sell, nowSec)
-        if (
-          options.maxPriceAgeDays !== null &&
-          (buyAge === null ||
-            sellAge === null ||
-            buyAge > options.maxPriceAgeDays ||
-            sellAge > options.maxPriceAgeDays)
-        ) {
-          dropped.priceAge++
-          continue
-        }
 
-        // allowed box sizes B = STD ∩ buySizes ∩ sellSizes ∩ shipSizes ∩ [min, max]
-        const buySizes = terminalSizes(buy.containerSizes, buyTerminal)
-        const sellSizes = terminalSizes(sell.containerSizes, data.terminalById.get(stops[j]))
         const boxSizesUnknown = buy.containerSizes.length === 0 || sell.containerSizes.length === 0
-        const usable = intersect(intersect(intersect(STD_BOX_SIZES, buySizes), sellSizes), ship)
-        const boxSizes = usable.filter((s) => s >= minBox && s <= maxBox)
+        const { usable, boxSizes } = allowedBoxes(
+          buy,
+          sell,
+          buyTerminal,
+          data.terminalById.get(stops[j]),
+          ship,
+          input.boxRange,
+        )
         const qtyMax = maxFillable(cap, boxSizes)
         if (qtyMax === 0) {
           // Only sizes below the range minimum are on offer → "too small"; anything else

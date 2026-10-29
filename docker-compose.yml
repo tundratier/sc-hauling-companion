@@ -33,5 +33,21 @@ services:
     ports:
       - '8080:8080'
 
+  # Terminal map compiler (docs/terminal-map.md): offline `--compile` / `--check` from tools/terminal-map/raw
+  terminal-map:
+    build:
+      context: .
+      dockerfile: tools/terminal-map/Dockerfile
+    image: sc-hauling-companion-terminal-map
+    volumes:
+      - .:/work
+
+  terminal-map-test:
+    image: sc-hauling-companion-terminal-map
+    entrypoint:
+      ['python', '-I', '-m', 'unittest', 'discover', '-s', '/work/tools/terminal-map', '-v']
+    volumes:
+      - .:/work
+
 volumes:
   node_modules:
