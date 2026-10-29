@@ -80,6 +80,28 @@ export interface ReportedInventory {
   scuSellStock: number
 }
 
+/** One trade of a stopover chain (see `StopoverComparison`). */
+export interface StopoverLeg {
+  from: number
+  to: number
+  commodityName: string
+  profit: number
+}
+
+/**
+ * A skip haul compared with trading through the stops it skips: the most profitable chain of
+ * hauls from `from` to `to` that sells at least once at a skipped stop (full hold per leg,
+ * any commodity per leg; a leg without a profitable trade carries nothing).
+ */
+export interface StopoverComparison {
+  /** Total profit of the best chain; 0 when no skipped stop has a profitable trade. */
+  profit: number
+  /** The chain's trades in route order (legs that carry nothing are left out). */
+  legs: StopoverLeg[]
+  /** Haul profit − chain profit: > 0 when skipping pays more. */
+  delta: number
+}
+
 /** One candidate trade: buy `commodity` at stop `from`, sell at stop `to` (> from). */
 export interface Haul {
   id: string
@@ -112,6 +134,8 @@ export interface Haul {
   sellAgeDays: number | null
   reported: ReportedInventory
   flags: HaulFlags
+  /** Only for skip hauls (skips > 0); null otherwise. */
+  stopovers: StopoverComparison | null
 }
 
 export interface DroppedCounts {

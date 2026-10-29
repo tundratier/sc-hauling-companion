@@ -234,6 +234,34 @@ describe('stop sections (criterion 6)', () => {
     expect(profits(1)).toEqual(['2,760', '2,300', '1,380'])
   })
 
+  it('compares skip lines with trading via the skipped stops (criterion 16)', async () => {
+    seed({ offers, commodities })
+    const user = userEvent.setup()
+    render(<TradesView />)
+    const [beta, alphaSkip, alphaNext] = lines(1)
+    // via #2: Alpha→#2 1,380 + Gamma 46×15 = 690 → 2,070
+    expect(beta).toHaveTextContent('▲ 690 more than #1 → #2 → #3')
+    expect(alphaSkip).toHaveTextContent('▲ 230 more than #1 → #2 → #3')
+    expect(alphaNext.querySelector('.option__via')).toBeNull()
+    await user.click(within(beta).getByRole('button', { name: /details for/i }))
+    expect(beta).toHaveTextContent('Instead of skipping')
+    expect(beta).toHaveTextContent('#1 → #2 Alpha 1,380')
+    expect(beta).toHaveTextContent('#2 → #3 Gamma 690')
+    expect(beta).toHaveTextContent('Via stops2,070')
+    expect(beta).toHaveTextContent('Skipping2,760')
+    expect(beta).toHaveTextContent('Difference+690')
+  })
+
+  it('marks skip lines that earn less than trading via the skipped stops', () => {
+    // Gamma 46×30 = 1,380 → via #2 = 2,760: Beta ties, Alpha→#3 loses 460
+    seed({ offers: [...offers.slice(0, 6), sellOffer(3, 3, 40)], commodities })
+    render(<TradesView />)
+    const [beta, alphaSkip] = lines(1)
+    expect(beta).toHaveTextContent('= same as #1 → #2 → #3')
+    expect(alphaSkip).toHaveTextContent('▼ 460 less than #1 → #2 → #3')
+    expect(alphaSkip.querySelector('.option__via--worse')).not.toBeNull()
+  })
+
   it('shows allowed box sizes next to the commodity name without expanding (criterion 9)', () => {
     seed({
       offers: [

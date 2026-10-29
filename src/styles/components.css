@@ -601,6 +601,35 @@
   text-align: right;
 }
 
+/* Skip hauls only: profit compared with trading via the skipped stops (own row, full width) */
+.option__via {
+  grid-column: 1 / -1;
+  color: var(--amber);
+  font-size: 0.8125rem;
+}
+
+.option__via--worse {
+  color: var(--warn);
+}
+
+.option__stopovers {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.option__legs {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+}
+
+.option__leg-profit {
+  color: var(--amber-bright);
+}
+
 .option__name {
   overflow-wrap: anywhere;
 }

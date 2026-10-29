@@ -29,7 +29,8 @@ const lines = (n: number) => within(section(n)).queryAllByRole('listitem')
 const line = (n: number, name: string, sell?: number) => {
   const found = lines(n).find(
     (l) =>
-      l.textContent?.includes(name) && (sell === undefined || l.textContent.includes(`#${sell}`)),
+      l.textContent?.includes(name) &&
+      (sell === undefined || l.querySelector('.option__sell')?.textContent?.includes(`#${sell}`)),
   )
   if (!found) throw new Error(`no line ${name} at stop ${n}`)
   return found

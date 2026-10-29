@@ -1,7 +1,7 @@
 import { useId, useState, type ReactNode } from 'react'
-import type { Haul } from '../calc'
+import type { Haul, StopoverLeg } from '../calc'
 import type { Terminal } from '../domain/types'
-import { formatAgeDays, formatInt, formatPercent } from '../lib/format'
+import { formatAgeDays, formatInt, formatPercent, formatSigned } from '../lib/format'
 import { activeWarnings, describeWarning, reportedSummary } from '../lib/inventoryText'
 import { shortName } from '../lib/terminalNames'
 import { Badges, MAX_COLLAPSED_BADGES, haulBadges } from './Badges'
@@ -33,6 +33,43 @@ function Field({ label, value }: { label: string; value: string }) {
 export function boxBreakdown(haul: Haul): string {
   const parts = haul.boxes.map((b) => `${b.count}×${b.size}`).join(' + ')
   return `${parts} = ${haul.boxCount} box${haul.boxCount === 1 ? '' : 'es'}`
+}
+
+/** The stops a haul passes without selling, 1-based: "#2" or "#2–#4". */
+export function skippedStops(haul: Haul): string {
+  const first = haul.from + 2
+  return haul.to === first ? `#${first}` : `#${first}–#${haul.to}`
+}
+
+/** The chain's trades as stop paths, 1-based: "#4 → #5", "#2 → #3 → #5", "#2 → #3, #4 → #5". */
+export function chainPath(legs: StopoverLeg[]): string {
+  const paths: number[][] = []
+  for (const leg of legs) {
+    const last = paths[paths.length - 1]
+    if (last && last[last.length - 1] === leg.from) last.push(leg.to)
+    else paths.push([leg.from, leg.to])
+  }
+  return paths.map((p) => p.map((s) => `#${s + 1}`).join(' → ')).join(', ')
+}
+
+/**
+ * `▲ 4,200 more than #2 → #3` / `▼ 3,100 less than #4 → #5` / `= same as #2 → #3`, or
+ * `▲ 4,200 more · no trades via #2–#3` when no skipped stop has a profitable trade.
+ */
+export function stopoverVerdict(haul: Haul): { text: string; better: boolean | null } | null {
+  const cmp = haul.stopovers
+  if (!cmp) return null
+  const amount = formatInt(Math.abs(cmp.delta))
+  if (cmp.legs.length === 0) {
+    return { text: `▲ ${amount} more · no trades via ${skippedStops(haul)}`, better: true }
+  }
+  const path = chainPath(cmp.legs)
+  if (cmp.delta === 0) return { text: `= same as ${path}`, better: null }
+  const better = cmp.delta > 0
+  return {
+    text: `${better ? '▲' : '▼'} ${amount} ${better ? 'more' : 'less'} than ${path}`,
+    better,
+  }
 }
 
 /** The collapsed line: a toggle button at the current stop, plain content elsewhere. */
@@ -90,6 +127,7 @@ export function OptionLine({
   const sellName = shortName(terminalById.get(stops[haul.to]), stops[haul.to])
   const badges = haulBadges(haul)
   const reported = reportedSummary(haul)
+  const verdict = stopoverVerdict(haul)
 
   return (
     <li className={`option${expanded ? ' option--open' : ''}${bought ? ' option--bought' : ''}`}>
@@ -133,6 +171,13 @@ export function OptionLine({
             <span className="num option__unit"> aUEC</span>
           </span>
           <span className="num muted option__roi">{formatPercent(haul.roi)}</span>
+          {verdict && (
+            <span
+              className={`num option__via${verdict.better === false ? ' option__via--worse' : ''}`}
+            >
+              {verdict.text}
+            </span>
+          )}
         </LineTag>
         <button
           type="button"
@@ -195,6 +240,28 @@ export function OptionLine({
               value={`buy ${formatAgeDays(haul.buyAgeDays)} · sell ${formatAgeDays(haul.sellAgeDays)}`}
             />
           </div>
+          {haul.stopovers && (
+            <div className="option__stopovers">
+              <span className="label">Instead of skipping</span>
+              {haul.stopovers.legs.length > 0 ? (
+                <div className="option__legs num">
+                  {haul.stopovers.legs.map((leg) => (
+                    <span key={`${leg.from}-${leg.to}`}>
+                      #{leg.from + 1} → #{leg.to + 1} {leg.commodityName}{' '}
+                      <span className="option__leg-profit">{formatInt(leg.profit)}</span>
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p className="muted">No profitable trade sells at {skippedStops(haul)}.</p>
+              )}
+              <div className="fields">
+                <Field label="Via stops" value={formatInt(haul.stopovers.profit)} />
+                <Field label="Skipping" value={formatInt(haul.profit)} />
+                <Field label="Difference" value={formatSigned(haul.stopovers.delta)} />
+              </div>
+            </div>
+          )}
           <Badges badges={badges} />
           <p className="num muted option__reported">
             Reported — buy: {reported.buy} · sell: {reported.sell}
