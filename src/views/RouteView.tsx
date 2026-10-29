@@ -1,12 +1,16 @@
 import { useCallback, useMemo, useRef, useState, type PointerEvent } from 'react'
 import { Combobox } from '../components/Combobox'
 import { DataGate } from '../components/DataGate'
+import { SuggestPanel, suggestionSummary } from '../components/SuggestPanel'
+import { SuggestedRow } from '../components/SuggestedRow'
 import { searchTerminals } from '../domain/search'
 import { terminalDisplay } from '../domain/terminalDisplay'
 import type { Terminal } from '../domain/types'
+import { useSuggestions } from '../hooks/useSuggestions'
 import { indexAtY } from '../lib/drag'
 import { MAX_STOPS, MIN_STOPS, useAppStore } from '../state/useAppStore'
 import { useDataStore } from '../state/useDataStore'
+import { useSuggestUi } from '../state/useSuggestUi'
 import { inProgress } from '../trip/tripReducer'
 
 interface StopRowProps {
@@ -28,7 +32,10 @@ function StopRow(p: StopRowProps) {
   const display = p.terminal ? terminalDisplay(p.terminal) : undefined
   const name = display?.primary ?? `Unknown terminal (#${p.terminalId})`
   return (
-    <li className={`stop${p.dragging ? ' stop--dragging' : ''}${p.over ? ' stop--over' : ''}`}>
+    <li
+      data-stop-row
+      className={`stop${p.dragging ? ' stop--dragging' : ''}${p.over ? ' stop--over' : ''}`}
+    >
       <span className="stop__index num">{p.index + 1}</span>
       <div className="stop__text">
         <div className="stop__primary">{name}</div>
@@ -82,6 +89,9 @@ function RouteEditor() {
   const app = useAppStore()
   const { stops } = app
   const trip = useAppStore((s) => s.trip)
+  const suggestion = useSuggestions()
+  const dismiss = useSuggestUi((s) => s.dismiss)
+  const suggested = suggestion.status === 'ready' ? suggestion.result : null
   const [confirmClear, setConfirmClear] = useState(false)
   const [drag, setDrag] = useState<{ from: number; over: number } | null>(null)
   const listRef = useRef<HTMLOListElement>(null)
@@ -99,7 +109,9 @@ function RouteEditor() {
 
   const rowAt = (y: number) =>
     indexAtY(
-      [...(listRef.current?.children ?? [])].map((el) => el.getBoundingClientRect()),
+      [...(listRef.current?.querySelectorAll('[data-stop-row]') ?? [])].map((el) =>
+        el.getBoundingClientRect(),
+      ),
       y,
     )
   const dragStart = (index: number, e: PointerEvent<HTMLButtonElement>) => {
@@ -125,13 +137,25 @@ function RouteEditor() {
           {Math.min(trip.currentStop + 1, Math.max(1, stops.length))} of {stops.length})
         </p>
       )}
+      {suggested && (
+        <div className="panel stack suggest__summary" aria-label="Suggestion summary">
+          <p className="num">{suggestionSummary(suggested)}</p>
+          <button
+            type="button"
+            className="btn btn--primary"
+            onClick={() => app.replaceStops(suggested.route)}
+          >
+            Add all
+          </button>
+        </div>
+      )}
       {stops.length === 0 ? (
         <p className="panel muted">
           No stops yet. Add the terminals you must visit, in order — at least {MIN_STOPS}.
         </p>
       ) : (
         <ol ref={listRef} className="stops" aria-label="Route stops">
-          {stops.map((id, i) => (
+          {stops.flatMap((id, i) => [
             <StopRow
               key={`${i}-${id}`}
               index={i}
@@ -146,13 +170,28 @@ function RouteEditor() {
               onDragStart={(e) => dragStart(i, e)}
               onDragMove={dragMove}
               onDragEnd={dragEnd}
-            />
-          ))}
+            />,
+            ...(suggested?.stops ?? [])
+              .filter((s) => s.gapIndex === i)
+              .sort((a, b) => a.position - b.position)
+              .map((s) => (
+                <SuggestedRow
+                  key={`suggested-${s.terminalId}`}
+                  stop={s}
+                  result={suggested!}
+                  byId={byId}
+                  onAdd={() => app.insertStop(i + 1, s.terminalId)}
+                  onDismiss={() => dismiss(s.terminalId)}
+                />
+              )),
+          ])}
         </ol>
       )}
       <p className="muted num" aria-live="polite">
         {stops.length} / {MAX_STOPS} stops
       </p>
+
+      <SuggestPanel state={suggestion} stopCount={stops.length} />
 
       <section className="panel stack" aria-label="Add stop">
         {full ? (

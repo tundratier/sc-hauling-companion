@@ -1113,3 +1113,45 @@ select.input:disabled {
 .option__details-btn[aria-expanded='true'] .option__details-icon {
   transform: rotate(180deg);
 }
+
+/* ---- Add profitable stops (SPEC §7.4) ---- */
+.stop--suggested {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  border-style: dashed;
+  border-color: var(--amber-dim);
+  background: transparent;
+}
+
+.stop--suggested .stop__tag {
+  grid-column: 1 / -1;
+  justify-self: start;
+  margin-left: 4px;
+}
+
+.stop__role {
+  color: var(--amber);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+
+.stop--suggested .stop__actions .btn {
+  min-width: var(--tap);
+  width: auto;
+  padding: 0 12px;
+}
+
+.suggest__summary {
+  border-style: dashed;
+  border-color: var(--amber-dim);
+}
+
+.suggest__title {
+  color: var(--amber);
+}
+
+.suggest__settings-btn {
+  align-self: flex-start;
+}
