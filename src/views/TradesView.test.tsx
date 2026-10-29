@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { UexError } from '../api/uexClient'
@@ -260,6 +260,72 @@ describe('stop sections (criterion 6)', () => {
     expect(beta).toHaveTextContent('= same as #1 → #2 → #3')
     expect(alphaSkip).toHaveTextContent('▼ 460 less than #1 → #2 → #3')
     expect(alphaSkip.querySelector('.option__via--worse')).not.toBeNull()
+  })
+
+  describe('worse skip lines are compact and dimmed (§7.5, criterion 18)', () => {
+    // same data as above: Beta ties (= same as …), Alpha → #3 loses 460, Alpha → #2 has no skip
+    const worse = [...offers.slice(0, 6), sellOffer(3, 3, 40)]
+
+    it('shows only commodity, sell stop, profit, verdict and Details', () => {
+      seed({ offers: worse, commodities })
+      render(<TradesView />)
+      const [, alphaSkip] = lines(1)
+      expect(alphaSkip).toHaveClass('option--compact')
+      expect(alphaSkip).toHaveTextContent('Alpha')
+      expect(alphaSkip).toHaveTextContent('→ #3 CBD Lorville')
+      expect(alphaSkip).toHaveTextContent('2,300')
+      expect(alphaSkip).toHaveTextContent('aUEC')
+      expect(alphaSkip).toHaveTextContent('▼ 460 less than #1 → #2 → #3')
+      expect(within(alphaSkip).getByRole('button', { name: /details for/i })).toBeInTheDocument()
+      // left out of the collapsed row: box sizes, prices, ROI and badges
+      expect(alphaSkip.querySelector('.option__boxes')).toBeNull()
+      expect(alphaSkip.querySelector('.option__prices')).toBeNull()
+      expect(alphaSkip.querySelector('.option__roi')).toBeNull()
+      expect(alphaSkip).not.toHaveTextContent('SKIPS')
+      expect(alphaSkip).not.toHaveTextContent('BUY')
+    })
+
+    it('returns to the full layout while the details are open', async () => {
+      seed({ offers: worse, commodities })
+      const user = userEvent.setup()
+      render(<TradesView />)
+      const [, alphaSkip] = lines(1)
+      await user.click(within(alphaSkip).getByRole('button', { name: /details for/i }))
+      expect(alphaSkip).not.toHaveClass('option--compact')
+      expect(alphaSkip.querySelector('.option__prices')).not.toBeNull()
+      expect(alphaSkip).toHaveTextContent('SKIPS 1')
+      expect(alphaSkip).toHaveTextContent('Instead of skipping')
+      await user.click(within(alphaSkip).getByRole('button', { name: /details for/i }))
+      expect(alphaSkip).toHaveClass('option--compact')
+    })
+
+    it('returns to the full layout when the line is marked as bought', async () => {
+      seed({ offers: worse, commodities })
+      const user = userEvent.setup()
+      render(<TradesView />)
+      const [, alphaSkip] = lines(1)
+      await user.click(within(alphaSkip).getAllByRole('button')[0])
+      expect(alphaSkip).toHaveClass('option--bought')
+      expect(alphaSkip).not.toHaveClass('option--compact')
+      expect(alphaSkip.querySelector('.option__prices')).not.toBeNull()
+      // unmarking dims it again
+      await user.click(within(alphaSkip).getAllByRole('button')[0])
+      expect(alphaSkip).toHaveClass('option--compact')
+    })
+
+    it('leaves equal, better and plain lines in the normal layout', () => {
+      seed({ offers: worse, commodities })
+      render(<TradesView />)
+      const [beta, , alphaNext] = lines(1)
+      expect(beta).toHaveTextContent('= same as #1 → #2 → #3')
+      expect(beta).not.toHaveClass('option--compact')
+      expect(alphaNext).not.toHaveClass('option--compact')
+      expect(beta.querySelector('.option__prices')).not.toBeNull()
+      cleanup()
+      seed({ offers, commodities }) // here both skip lines are better (▲)
+      render(<TradesView />)
+      for (const l of lines(1)) expect(l).not.toHaveClass('option--compact')
+    })
   })
 
   it('shows allowed box sizes next to the commodity name without expanding (criterion 9)', () => {

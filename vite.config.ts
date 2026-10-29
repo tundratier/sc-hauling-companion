@@ -1,6 +1,6 @@
-/// <reference types="vitest/config" />
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
+import { configDefaults } from 'vitest/config'
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -13,6 +13,8 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
+    // other sessions keep git worktrees (with their own copy of src/) under .claude/
+    exclude: [...configDefaults.exclude, '.claude/**'],
     globals: true,
     setupFiles: ['./src/test-setup.ts'],
     coverage: {

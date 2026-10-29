@@ -15,13 +15,8 @@ export interface Trades {
   /** Current time (ms), refreshed every minute so ages stay current. */
   now: number
 }
-
-/**
- * Memoized calculation: recomputes synchronously whenever an input, the static data or the
- * prices change (no API round-trip).
- */
-export function useTrades(): Trades {
-  const stops = useAppStore((s) => s.stops)
+/** The calculation settings from the user inputs (everything but the route), memoized. */
+export function useCalcSettings(): { calc: Omit<CalcInput, 'stops'>; vehicle: Vehicle | null } {
   const freeScu = useAppStore((s) => s.freeScu)
   const vehicleId = useAppStore((s) => s.vehicleId)
   const boxMin = useAppStore((s) => s.boxMin)
@@ -30,24 +25,35 @@ export function useTrades(): Trades {
   const includeVolatileQt = useAppStore((s) => s.includeVolatileQt)
   const maxPriceAgeDays = useAppStore((s) => s.maxPriceAgeDays)
   const staticData = useDataStore((s) => s.staticData?.data)
-  const prices = useDataStore((s) => s.prices?.data)
-  const now = useNow(true, 60_000)
 
   const vehicle = useMemo(
     () => staticData?.vehicles.find((v) => v.id === vehicleId) ?? null,
     [staticData, vehicleId],
   )
 
-  const input = useMemo<CalcInput>(
+  const calc = useMemo<Omit<CalcInput, 'stops'>>(
     () => ({
-      stops,
       freeScu: Math.min(freeScu, vehicle?.scu ?? Number.MAX_SAFE_INTEGER),
       shipBoxSizes: vehicle?.containerSizes ?? null,
       boxRange: { min: boxMin, max: boxMax },
       options: { includeIllegal, includeVolatileQt, maxPriceAgeDays },
     }),
-    [stops, freeScu, vehicle, boxMin, boxMax, includeIllegal, includeVolatileQt, maxPriceAgeDays],
+    [freeScu, vehicle, boxMin, boxMax, includeIllegal, includeVolatileQt, maxPriceAgeDays],
   )
+  return { calc, vehicle }
+}
+
+/**
+ * Memoized calculation: recomputes synchronously whenever an input, the static data or the
+ * prices change (no API round-trip).
+ */
+export function useTrades(): Trades {
+  const stops = useAppStore((s) => s.stops)
+  const staticData = useDataStore((s) => s.staticData?.data)
+  const prices = useDataStore((s) => s.prices?.data)
+  const now = useNow(true, 60_000)
+  const { calc, vehicle } = useCalcSettings()
+  const input = useMemo<CalcInput>(() => ({ stops, ...calc }), [stops, calc])
 
   const indexes = useMemo(() => {
     if (!staticData || !prices) return null

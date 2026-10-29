@@ -1,12 +1,16 @@
 import { useCallback, useMemo, useRef, useState, type PointerEvent } from 'react'
 import { Combobox } from '../components/Combobox'
 import { DataGate } from '../components/DataGate'
+import { SuggestPanel } from '../components/SuggestPanel'
+import { SuggestedRow } from '../components/SuggestedRow'
 import { searchTerminals } from '../domain/search'
 import { terminalDisplay } from '../domain/terminalDisplay'
 import type { Terminal } from '../domain/types'
+import { useSuggestions } from '../hooks/useSuggestions'
 import { indexAtY } from '../lib/drag'
-import { MAX_STOPS, MIN_STOPS, useAppStore } from '../state/useAppStore'
+import { MAX_STOPS, MIN_STOPS, normalizeOrigins, useAppStore } from '../state/useAppStore'
 import { useDataStore } from '../state/useDataStore'
+import { useSuggestUi } from '../state/useSuggestUi'
 import { inProgress } from '../trip/tripReducer'
 
 interface StopRowProps {
@@ -14,6 +18,7 @@ interface StopRowProps {
   count: number
   terminal: Terminal | undefined
   terminalId: number
+  dynamic: boolean
   dragging: boolean
   over: boolean
   onUp: () => void
@@ -28,10 +33,16 @@ function StopRow(p: StopRowProps) {
   const display = p.terminal ? terminalDisplay(p.terminal) : undefined
   const name = display?.primary ?? `Unknown terminal (#${p.terminalId})`
   return (
-    <li className={`stop${p.dragging ? ' stop--dragging' : ''}${p.over ? ' stop--over' : ''}`}>
+    <li
+      data-stop-row
+      className={`stop${p.dragging ? ' stop--dragging' : ''}${p.over ? ' stop--over' : ''}`}
+    >
       <span className="stop__index num">{p.index + 1}</span>
       <div className="stop__text">
-        <div className="stop__primary">{name}</div>
+        <div className="stop__primary">
+          {name}
+          {p.dynamic && <span className="badge stop__badge">DYNAMIC</span>}
+        </div>
         {display?.secondary && <div className="stop__secondary">{display.secondary}</div>}
       </div>
       <div className="stop__actions">
@@ -81,7 +92,11 @@ function RouteEditor() {
   const terminals = useDataStore((s) => s.staticData!.data.terminals)
   const app = useAppStore()
   const { stops } = app
+  const origins = normalizeOrigins(stops, app.origins)
   const trip = useAppStore((s) => s.trip)
+  const suggestion = useSuggestions()
+  const dismiss = useSuggestUi((s) => s.dismiss)
+  const suggested = suggestion.status === 'ready' ? suggestion.result : null
   const [confirmClear, setConfirmClear] = useState(false)
   const [drag, setDrag] = useState<{ from: number; over: number } | null>(null)
   const listRef = useRef<HTMLOListElement>(null)
@@ -99,7 +114,9 @@ function RouteEditor() {
 
   const rowAt = (y: number) =>
     indexAtY(
-      [...(listRef.current?.children ?? [])].map((el) => el.getBoundingClientRect()),
+      [...(listRef.current?.querySelectorAll('[data-stop-row]') ?? [])].map((el) =>
+        el.getBoundingClientRect(),
+      ),
       y,
     )
   const dragStart = (index: number, e: PointerEvent<HTMLButtonElement>) => {
@@ -131,13 +148,14 @@ function RouteEditor() {
         </p>
       ) : (
         <ol ref={listRef} className="stops" aria-label="Route stops">
-          {stops.map((id, i) => (
+          {stops.flatMap((id, i) => [
             <StopRow
               key={`${i}-${id}`}
               index={i}
               count={stops.length}
               terminal={byId.get(id)}
               terminalId={id}
+              dynamic={origins[i] === 'dynamic'}
               dragging={drag?.from === i}
               over={!!drag && drag.over === i && drag.from !== i}
               onUp={() => app.moveStop(i, i - 1)}
@@ -146,8 +164,21 @@ function RouteEditor() {
               onDragStart={(e) => dragStart(i, e)}
               onDragMove={dragMove}
               onDragEnd={dragEnd}
-            />
-          ))}
+            />,
+            ...(suggested?.stops ?? [])
+              .filter((s) => s.insertAt === i + 1)
+              .sort((a, b) => a.routeIndex - b.routeIndex)
+              .map((s) => (
+                <SuggestedRow
+                  key={`suggested-${s.terminalId}`}
+                  stop={s}
+                  result={suggested!}
+                  byId={byId}
+                  onAdd={() => app.insertStop(s.insertAt, s.terminalId, 'dynamic')}
+                  onDismiss={() => dismiss(s.terminalId)}
+                />
+              )),
+          ])}
         </ol>
       )}
       <p className="muted num" aria-live="polite">
@@ -219,6 +250,13 @@ function RouteEditor() {
           </button>
         )}
       </div>
+
+      <SuggestPanel
+        state={suggestion}
+        fixedCount={origins.filter((o) => o === 'fixed').length}
+        dynamicCount={origins.filter((o) => o === 'dynamic').length}
+        onAddAll={(result) => app.replaceStops(result.route, result.origins)}
+      />
     </div>
   )
 }

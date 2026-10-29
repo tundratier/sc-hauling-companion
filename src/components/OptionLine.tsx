@@ -128,9 +128,13 @@ export function OptionLine({
   const badges = haulBadges(haul)
   const reported = reportedSummary(haul)
   const verdict = stopoverVerdict(haul)
+  // a skip line that earns less than its stopover chain is shown compact and dimmed (§7.5)
+  const compact = verdict?.better === false && !expanded && !bought
 
   return (
-    <li className={`option${expanded ? ' option--open' : ''}${bought ? ' option--bought' : ''}`}>
+    <li
+      className={`option${expanded ? ' option--open' : ''}${bought ? ' option--bought' : ''}${compact ? ' option--compact' : ''}`}
+    >
       <div className="option__row">
         <LineTag
           toggle={onToggle}
@@ -146,31 +150,35 @@ export function OptionLine({
               </span>
             )}
             <strong>{haul.commodity.name}</strong>{' '}
-            <span className="num muted option__boxes" title="Allowed box sizes">
-              □ {haul.boxSizes.join('·')}
-            </span>
+            {!compact && (
+              <span className="num muted option__boxes" title="Allowed box sizes">
+                □ {haul.boxSizes.join('·')}
+              </span>
+            )}
           </span>
           <span className="option__sell">
             <span>
               → <span className="num">#{haul.to + 1}</span> {sellName}
             </span>
-            <Badges badges={badges} limit={MAX_COLLAPSED_BADGES} />
+            {!compact && <Badges badges={badges} limit={MAX_COLLAPSED_BADGES} />}
           </span>
-          <span className="option__prices num">
-            <span className="option__price">
-              <span className="option__label">BUY</span> {formatInt(haul.unitBuy)}
-            </span>{' '}
-            <span className="option__label">→</span>{' '}
-            <span className="option__price">
-              <span className="option__label">SELL</span> {formatInt(haul.unitSell)}{' '}
-              <span className="option__label">/SCU</span>
+          {!compact && (
+            <span className="option__prices num">
+              <span className="option__price">
+                <span className="option__label">BUY</span> {formatInt(haul.unitBuy)}
+              </span>{' '}
+              <span className="option__label">→</span>{' '}
+              <span className="option__price">
+                <span className="option__label">SELL</span> {formatInt(haul.unitSell)}{' '}
+                <span className="option__label">/SCU</span>
+              </span>
             </span>
-          </span>
+          )}
           <span className="option__profit-cell">
             <span className="num num--primary option__profit">{formatInt(haul.profit)}</span>
             <span className="num option__unit"> aUEC</span>
           </span>
-          <span className="num muted option__roi">{formatPercent(haul.roi)}</span>
+          {!compact && <span className="num muted option__roi">{formatPercent(haul.roi)}</span>}
           {verdict && (
             <span
               className={`num option__via${verdict.better === false ? ' option__via--worse' : ''}`}
