@@ -22,7 +22,12 @@ export function suggestionSummary(result: SuggestResult): string {
 }
 
 /** One-line state of the search under the toggle. */
-export function suggestionStatus(state: SuggestionState, detourPct: number): string | null {
+export function suggestionStatus(
+  state: SuggestionState,
+  detourPct: number,
+  used = 0,
+  total = Number.POSITIVE_INFINITY,
+): string | null {
   switch (state.status) {
     case 'off':
       return null
@@ -31,6 +36,7 @@ export function suggestionStatus(state: SuggestionState, detourPct: number): str
     case 'searching':
       return 'Searching…'
     case 'none':
+      if (used >= total) return `${used} of ${total} dynamic stops used`
       return `No profitable stops within a ${detourPct} % detour${state.bestFound ? ' (best found)' : ''}`
     default:
       return state.result.bestFound ? 'Best found within the time limit' : null
@@ -39,23 +45,29 @@ export function suggestionStatus(state: SuggestionState, detourPct: number): str
 
 interface SuggestPanelProps {
   state: SuggestionState
-  stopCount: number
+  /** Fixed stops of the route (suggestions need at least two). */
+  fixedCount: number
+  /** Accepted dynamic stops of the route; they use the budget. */
+  dynamicCount: number
+  onAddAll: (result: SuggestResult) => void
 }
 
 /**
- * "Add profitable stops" (SPEC §6.7, §7.4): the toggle and its four settings, collapsed by
- * default. The suggestions themselves appear inline in the stop list.
+ * "Add profitable stops" (SPEC §6.7, §7.4), the last section of ROUTE: the toggle, its four
+ * settings (collapsed by default), the dynamic-stop budget, and — when there are suggestions —
+ * their summary and ADD ALL. The suggested rows themselves appear inline in the stop list.
  */
-export function SuggestPanel({ state, stopCount }: SuggestPanelProps) {
+export function SuggestPanel({ state, fixedCount, dynamicCount, onAddAll }: SuggestPanelProps) {
   const options = useAppStore((s) => s.suggest)
   const setOptions = useAppStore((s) => s.setSuggestOptions)
   const [open, setOpen] = useState(false)
-  const status = suggestionStatus(state, options.detourPct)
+  const status = suggestionStatus(state, options.detourPct, dynamicCount, options.total)
   const map =
     state.status === 'none' || state.status === 'ready' || state.status === 'searching'
       ? state.map
       : null
-  const tooFew = stopCount < 2
+  const tooFew = fixedCount < 2
+  const result = state.status === 'ready' ? state.result : null
 
   return (
     <section className="panel stack" aria-label="Add profitable stops">
@@ -127,6 +139,20 @@ export function SuggestPanel({ state, stopCount }: SuggestPanelProps) {
               ))}
             </select>
           </div>
+        </div>
+      )}
+
+      {options.enabled && !tooFew && (
+        <p className="muted num" aria-label="Dynamic stop budget">
+          dynamic stops {dynamicCount} / {options.total} used
+        </p>
+      )}
+      {result && (
+        <div className="stack suggest__summary" aria-label="Suggestion summary">
+          <p className="num">{suggestionSummary(result)}</p>
+          <button type="button" className="btn btn--primary" onClick={() => onAddAll(result)}>
+            Add all
+          </button>
         </div>
       )}
     </section>

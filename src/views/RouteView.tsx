@@ -1,14 +1,14 @@
 import { useCallback, useMemo, useRef, useState, type PointerEvent } from 'react'
 import { Combobox } from '../components/Combobox'
 import { DataGate } from '../components/DataGate'
-import { SuggestPanel, suggestionSummary } from '../components/SuggestPanel'
+import { SuggestPanel } from '../components/SuggestPanel'
 import { SuggestedRow } from '../components/SuggestedRow'
 import { searchTerminals } from '../domain/search'
 import { terminalDisplay } from '../domain/terminalDisplay'
 import type { Terminal } from '../domain/types'
 import { useSuggestions } from '../hooks/useSuggestions'
 import { indexAtY } from '../lib/drag'
-import { MAX_STOPS, MIN_STOPS, useAppStore } from '../state/useAppStore'
+import { MAX_STOPS, MIN_STOPS, normalizeOrigins, useAppStore } from '../state/useAppStore'
 import { useDataStore } from '../state/useDataStore'
 import { useSuggestUi } from '../state/useSuggestUi'
 import { inProgress } from '../trip/tripReducer'
@@ -18,6 +18,7 @@ interface StopRowProps {
   count: number
   terminal: Terminal | undefined
   terminalId: number
+  dynamic: boolean
   dragging: boolean
   over: boolean
   onUp: () => void
@@ -38,7 +39,10 @@ function StopRow(p: StopRowProps) {
     >
       <span className="stop__index num">{p.index + 1}</span>
       <div className="stop__text">
-        <div className="stop__primary">{name}</div>
+        <div className="stop__primary">
+          {name}
+          {p.dynamic && <span className="badge stop__badge">DYNAMIC</span>}
+        </div>
         {display?.secondary && <div className="stop__secondary">{display.secondary}</div>}
       </div>
       <div className="stop__actions">
@@ -88,6 +92,7 @@ function RouteEditor() {
   const terminals = useDataStore((s) => s.staticData!.data.terminals)
   const app = useAppStore()
   const { stops } = app
+  const origins = normalizeOrigins(stops, app.origins)
   const trip = useAppStore((s) => s.trip)
   const suggestion = useSuggestions()
   const dismiss = useSuggestUi((s) => s.dismiss)
@@ -137,18 +142,6 @@ function RouteEditor() {
           {Math.min(trip.currentStop + 1, Math.max(1, stops.length))} of {stops.length})
         </p>
       )}
-      {suggested && (
-        <div className="panel stack suggest__summary" aria-label="Suggestion summary">
-          <p className="num">{suggestionSummary(suggested)}</p>
-          <button
-            type="button"
-            className="btn btn--primary"
-            onClick={() => app.replaceStops(suggested.route)}
-          >
-            Add all
-          </button>
-        </div>
-      )}
       {stops.length === 0 ? (
         <p className="panel muted">
           No stops yet. Add the terminals you must visit, in order — at least {MIN_STOPS}.
@@ -162,6 +155,7 @@ function RouteEditor() {
               count={stops.length}
               terminal={byId.get(id)}
               terminalId={id}
+              dynamic={origins[i] === 'dynamic'}
               dragging={drag?.from === i}
               over={!!drag && drag.over === i && drag.from !== i}
               onUp={() => app.moveStop(i, i - 1)}
@@ -172,15 +166,15 @@ function RouteEditor() {
               onDragEnd={dragEnd}
             />,
             ...(suggested?.stops ?? [])
-              .filter((s) => s.gapIndex === i)
-              .sort((a, b) => a.position - b.position)
+              .filter((s) => s.insertAt === i + 1)
+              .sort((a, b) => a.routeIndex - b.routeIndex)
               .map((s) => (
                 <SuggestedRow
                   key={`suggested-${s.terminalId}`}
                   stop={s}
                   result={suggested!}
                   byId={byId}
-                  onAdd={() => app.insertStop(i + 1, s.terminalId)}
+                  onAdd={() => app.insertStop(s.insertAt, s.terminalId, 'dynamic')}
                   onDismiss={() => dismiss(s.terminalId)}
                 />
               )),
@@ -190,8 +184,6 @@ function RouteEditor() {
       <p className="muted num" aria-live="polite">
         {stops.length} / {MAX_STOPS} stops
       </p>
-
-      <SuggestPanel state={suggestion} stopCount={stops.length} />
 
       <section className="panel stack" aria-label="Add stop">
         {full ? (
@@ -258,6 +250,13 @@ function RouteEditor() {
           </button>
         )}
       </div>
+
+      <SuggestPanel
+        state={suggestion}
+        fixedCount={origins.filter((o) => o === 'fixed').length}
+        dynamicCount={origins.filter((o) => o === 'dynamic').length}
+        onAddAll={(result) => app.replaceStops(result.route, result.origins)}
+      />
     </div>
   )
 }

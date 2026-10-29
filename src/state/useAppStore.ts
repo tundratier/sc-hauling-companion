@@ -5,6 +5,7 @@ import { STD_BOX_SIZES } from '../domain/types'
 import {
   DEFAULT_SUGGEST_OPTIONS,
   normalizeSuggestOptions,
+  type StopOrigin,
   type SuggestOptions,
 } from '../route/suggest/types'
 import {
@@ -49,6 +50,11 @@ export interface AppState {
   showUnavailableTerminals: boolean
   /** Terminal ids in route order; the same terminal may appear more than once. */
   stops: number[]
+  /**
+   * Origin of each stop, parallel to `stops` (SPEC §6.7): `fixed` = entered by the user,
+   * `dynamic` = an accepted suggestion. Moves with the stop on reorder, reverse and remove.
+   */
+  origins: StopOrigin[]
   /** Trip mode progress (SPEC §7.6); resets whenever the stop list changes. */
   trip: TripState
   /** "Add profitable stops" options (SPEC §6.7). */
@@ -68,10 +74,10 @@ export interface AppState {
   moveStop: (from: number, to: number) => void
   reverseStops: () => void
   clearStops: () => void
-  /** Insert a terminal as a normal stop at `index` (accepting a suggested stop). */
-  insertStop: (index: number, terminalId: number) => void
+  /** Insert a terminal at `index` (accepting a suggested stop: `dynamic`, the default). */
+  insertStop: (index: number, terminalId: number, origin?: StopOrigin) => void
   /** Replace the whole stop list (accepting all suggested stops); at most 10 stops. */
-  replaceStops: (stops: number[]) => void
+  replaceStops: (stops: number[], origins: StopOrigin[]) => void
   setSuggestOptions: (options: Partial<SuggestOptions>) => void
   toggleBought: (line: BoughtLine) => void
   departStop: () => void
@@ -95,9 +101,21 @@ export const clampFreeScu = (scu: number, shipScu?: number | null): number => {
   return Math.min(max, Math.max(1, n))
 }
 
+/** `origins` fitted to `stops`: missing or surplus entries count as `fixed` (old saved state). */
+export function normalizeOrigins(
+  stops: readonly number[],
+  origins: readonly StopOrigin[] | undefined,
+): StopOrigin[] {
+  return stops.map((_, i) => (origins?.[i] === 'dynamic' ? 'dynamic' : 'fixed'))
+}
+
 /** New stop list; the trip resets whenever the route actually changes. */
-function withStops(s: AppState, stops: number[]): Partial<AppState> {
-  return sameRoute(s.stops, stops) ? {} : { stops, trip: INITIAL_TRIP }
+function withStops(s: AppState, stops: number[], origins: StopOrigin[]): Partial<AppState> {
+  const before = normalizeOrigins(s.stops, s.origins)
+  if (sameRoute(s.stops, stops)) {
+    return before.every((o, i) => o === origins[i]) ? {} : { origins }
+  }
+  return { stops, origins, trip: INITIAL_TRIP }
 }
 
 export const useAppStore = create<AppState>()(
@@ -114,6 +132,7 @@ export const useAppStore = create<AppState>()(
       maxPriceAgeDays: null,
       showUnavailableTerminals: false,
       stops: [],
+      origins: [],
       trip: INITIAL_TRIP,
       suggest: DEFAULT_SUGGEST_OPTIONS,
 
@@ -137,43 +156,70 @@ export const useAppStore = create<AppState>()(
       setMaxPriceAgeDays: (maxPriceAgeDays) => set({ maxPriceAgeDays }),
       setShowUnavailableTerminals: (showUnavailableTerminals) => set({ showUnavailableTerminals }),
       addStop: (terminalId) =>
-        set((s) => (s.stops.length >= MAX_STOPS ? s : withStops(s, [...s.stops, terminalId]))),
+        set((s) => {
+          if (s.stops.length >= MAX_STOPS) return s
+          const origins = normalizeOrigins(s.stops, s.origins)
+          return withStops(s, [...s.stops, terminalId], [...origins, 'fixed'])
+        }),
       removeStop: (index) =>
-        set((s) =>
-          withStops(
+        set((s) => {
+          const origins = normalizeOrigins(s.stops, s.origins)
+          return withStops(
             s,
             s.stops.filter((_, i) => i !== index),
-          ),
-        ),
+            origins.filter((_, i) => i !== index),
+          )
+        }),
       moveStop: (from, to) =>
         set((s) => {
           if (from === to || from < 0 || to < 0 || from >= s.stops.length || to >= s.stops.length) {
             return s
           }
           const stops = [...s.stops]
+          const origins = normalizeOrigins(s.stops, s.origins)
           const [moved] = stops.splice(from, 1)
+          const [movedOrigin] = origins.splice(from, 1)
           stops.splice(to, 0, moved)
-          return withStops(s, stops)
+          origins.splice(to, 0, movedOrigin)
+          return withStops(s, stops, origins)
         }),
-      reverseStops: () => set((s) => withStops(s, [...s.stops].reverse())),
-      clearStops: () => set((s) => withStops(s, [])),
-      insertStop: (index, terminalId) =>
+      reverseStops: () =>
+        set((s) =>
+          withStops(s, [...s.stops].reverse(), normalizeOrigins(s.stops, s.origins).reverse()),
+        ),
+      clearStops: () => set((s) => withStops(s, [], [])),
+      insertStop: (index, terminalId, origin = 'dynamic') =>
         set((s) => {
           if (s.stops.length >= MAX_STOPS) return s
           const at = Math.min(Math.max(0, index), s.stops.length)
-          return withStops(s, [...s.stops.slice(0, at), terminalId, ...s.stops.slice(at)])
+          const origins = normalizeOrigins(s.stops, s.origins)
+          return withStops(
+            s,
+            [...s.stops.slice(0, at), terminalId, ...s.stops.slice(at)],
+            [...origins.slice(0, at), origin, ...origins.slice(at)],
+          )
         }),
-      replaceStops: (stops) => set((s) => (stops.length > MAX_STOPS ? s : withStops(s, stops))),
+      replaceStops: (stops, origins) =>
+        set((s) =>
+          stops.length > MAX_STOPS ? s : withStops(s, stops, normalizeOrigins(stops, origins)),
+        ),
       setSuggestOptions: (options) =>
         set((s) => ({ suggest: normalizeSuggestOptions({ ...s.suggest, ...options }) })),
       toggleBought: (line) => set((s) => ({ trip: toggleBought(s.trip, line) })),
       departStop: () => set((s) => ({ trip: depart(s.trip, s.stops.length) })),
       undoDepart: () => set((s) => ({ trip: undo(s.trip) })),
-      completeRoute: () => set({ stops: [], trip: complete(), tab: 'route' }),
+      completeRoute: () => set({ stops: [], origins: [], trip: complete(), tab: 'route' }),
     }),
     {
       name: STORAGE_KEY,
       version: 1,
+      // `origins` was added without a version bump: state saved before it has none, and every
+      // saved stop then counts as entered by the user (`fixed`).
+      merge: (persisted, current) => {
+        const saved = savedState(persisted)
+        const merged = { ...current, ...saved }
+        return { ...merged, origins: normalizeOrigins(merged.stops, merged.origins) }
+      },
       partialize: (s) => ({
         tab: s.tab,
         vehicleId: s.vehicleId,
@@ -186,6 +232,7 @@ export const useAppStore = create<AppState>()(
         maxPriceAgeDays: s.maxPriceAgeDays,
         showUnavailableTerminals: s.showUnavailableTerminals,
         stops: s.stops,
+        origins: s.origins,
         trip: s.trip,
         suggest: s.suggest,
       }),
@@ -200,4 +247,9 @@ export function normalizeBoxRange(min: number, max: number): { boxMin: number; b
   const a = snap(min)
   const b = snap(max)
   return { boxMin: Math.min(a, b), boxMax: Math.max(a, b) }
+}
+
+/** What localStorage handed back, as a loose partial state (anything else counts as empty). */
+function savedState(value: unknown): Partial<AppState> {
+  return typeof value === 'object' && value !== null ? { ...value } : {}
 }

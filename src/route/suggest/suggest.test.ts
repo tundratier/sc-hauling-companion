@@ -15,6 +15,7 @@ import type { Terminal } from '../../domain/types'
 import { buildMapIndexes, candidateTerminals, suggestStops } from '.'
 import {
   DEFAULT_SUGGEST_OPTIONS,
+  type AcceptedStop,
   normalizeSuggestOptions,
   type SuggestOptions,
   type SuggestOutcome,
@@ -38,6 +39,7 @@ interface Scenario {
   terminals?: Terminal[]
   offers: Offers
   fixed: number[]
+  accepted?: AcceptedStop[]
   options?: Partial<SuggestOptions>
   dismissed?: number[]
   calc?: Partial<Omit<CalcInput, 'stops'>>
@@ -55,6 +57,7 @@ function run(s: Scenario): SuggestOutcome {
   return suggestStops(
     {
       fixed: s.fixed,
+      accepted: s.accepted,
       calc: { ...calcBase, ...s.calc },
       options: { ...OPTS, ...s.options },
       dismissed: s.dismissed ?? [],
@@ -596,5 +599,197 @@ describe('options', () => {
     })
     expect(normalizeSuggestOptions({})).toEqual(DEFAULT_SUGGEST_OPTIONS)
     expect(normalizeSuggestOptions({ detourPct: 155 }).detourPct).toBe(160)
+  })
+})
+
+describe('accepted dynamic stops (§6.7, revision 13)', () => {
+  const x1: TestNode = { id: 'station:X1', x: 30, terminals: [3] }
+  const x2: TestNode = { id: 'station:X2', x: 60, terminals: [4] }
+  // Quartz X1 → X2 (400), Waste X2 → B (500)
+  const chain: Offers = [
+    buyOffer(1, 3, 100),
+    sellOffer(1, 4, 140),
+    buyOffer(2, 4, 100),
+    sellOffer(2, 2, 150),
+  ]
+  const acceptedX1: AcceptedStop[] = [{ terminalId: 3, afterFixed: 0 }]
+
+  it('counts towards the per-gap limit: a full gap gets no more stops', () => {
+    // fixed A, B with X1 accepted; X2 would add Waste X2 → B, but the gap holds 1 already
+    const out = run({
+      nodes: [A, x1, x2, B],
+      offers: chain,
+      fixed: [1, 2],
+      accepted: acceptedX1,
+    })
+    expect(out.kind).toBe('none')
+    // with room for two per gap the second stop is suggested after the accepted one
+    const room = run({
+      nodes: [A, x1, x2, B],
+      offers: chain,
+      fixed: [1, 2],
+      accepted: acceptedX1,
+      options: { perGap: 2 },
+    })
+    expect(stopIds(room)).toEqual([4])
+    expect(ok(room).route).toEqual([1, 3, 4, 2])
+    expect(ok(room).origins).toEqual(['fixed', 'dynamic', 'dynamic', 'fixed'])
+    expect(ok(room).stops[0]).toMatchObject({
+      gapIndex: 0,
+      position: 0,
+      routeIndex: 2,
+      insertAt: 2,
+    })
+    // before = the current route including the accepted stop
+    expect(ok(room).profitBefore).toBe(0) // A, X1, B alone trade nothing
+    expect(ok(room).profitAfter).toBe(900)
+  })
+
+  it('counts towards the total limit', () => {
+    const out = run({
+      nodes: [A, x1, x2, B],
+      offers: chain,
+      fixed: [1, 2],
+      accepted: acceptedX1,
+      options: { perGap: 2, total: 1 },
+    })
+    expect(out.kind).toBe('none')
+  })
+
+  it('counts towards the per-planetary-group limit', () => {
+    const g1: TestNode = { ...x1, id: 'moon:M1', group: 'planet:P' }
+    const g2: TestNode = { ...x2, id: 'station:S1', group: 'planet:P' }
+    const base = { nodes: [A, g1, g2, B], offers: chain, fixed: [1, 2], accepted: acceptedX1 }
+    expect(run({ ...base, options: { perGap: 2, perGroup: 1 } }).kind).toBe('none')
+    expect(stopIds(run({ ...base, options: { perGap: 2, perGroup: 2 } }))).toEqual([4])
+  })
+
+  it('counts towards the 10-stop cap', () => {
+    const nodes: TestNode[] = [A, x1, x2, B]
+    // 8 fixed stops sharing A and B's positions are not needed: use the cap through a long route
+    const many: TestNode[] = Array.from({ length: 7 }, (_, i) => ({
+      id: `station:F${i}`,
+      x: 200 + i * 10,
+      terminals: [20 + i],
+    }))
+    const out = run({
+      nodes: [...nodes, ...many],
+      offers: chain,
+      fixed: [1, 2, ...many.map((n) => n.terminals[0])], // 9 fixed + 1 accepted = 10
+      accepted: acceptedX1,
+      options: { perGap: 2, total: 8 },
+    })
+    expect(out.kind).toBe('none')
+  })
+
+  it('is never moved, replaced or removed, even when the suggestion would be better without it', () => {
+    // the accepted stop is useless (no trade), the other candidate X2 is valuable
+    const out = run({
+      nodes: [A, x1, x2, B],
+      offers: [buyOffer(2, 4, 100), sellOffer(2, 2, 150)],
+      fixed: [1, 2],
+      accepted: acceptedX1,
+      options: { perGap: 2 },
+    })
+    expect(ok(out).route).toEqual([1, 3, 4, 2])
+    expect(ok(out).origins).toEqual(['fixed', 'dynamic', 'dynamic', 'fixed'])
+    expect(ok(out).stops.map((s) => s.terminalId)).toEqual([4]) // the accepted one is not "suggested"
+  })
+
+  it('may place a new stop before the accepted stop of the same gap', () => {
+    // Quartz X1 → X2 only pays with X1 first: the accepted stop is X2 (terminal 4)
+    const out = run({
+      nodes: [A, x1, x2, B],
+      offers: [buyOffer(1, 3, 100), sellOffer(1, 4, 140)],
+      fixed: [1, 2],
+      accepted: [{ terminalId: 4, afterFixed: 0 }],
+      options: { perGap: 2 },
+    })
+    expect(ok(out).route).toEqual([1, 3, 4, 2])
+    expect(ok(out).stops[0]).toMatchObject({ terminalId: 3, insertAt: 1 })
+  })
+
+  it('counts towards the detour of its gap', () => {
+    // accepted X1 at 30 and a candidate behind B: 30 + 110 + 40 = 180 > 150 % of 100
+    const far: TestNode = { id: 'station:far', x: 140, terminals: [4] }
+    const out = run({
+      nodes: [A, x1, far, B],
+      offers: chain,
+      fixed: [1, 2],
+      accepted: acceptedX1,
+      options: { perGap: 2 },
+    })
+    expect(out.kind).toBe('none')
+  })
+
+  it('counts towards the forward rule of its gap', () => {
+    // accepted X1 sits behind A in another group: A → X1 moves away from B, so the gap
+    // cannot take new stops (the accepted one is left alone)
+    const behind: TestNode = { id: 'station:behind', x: -20, terminals: [3] }
+    const out = run({
+      nodes: [behind, A, x2, B],
+      offers: chain,
+      fixed: [1, 2],
+      accepted: acceptedX1,
+      options: { perGap: 2, detourPct: 300 },
+    })
+    expect(out.kind).toBe('none')
+  })
+
+  it('a dynamic stop outside every gap counts towards total and group limits only', () => {
+    const before = run({
+      nodes: [A, x1, x2, B],
+      offers: chain,
+      fixed: [1, 2],
+      accepted: [{ terminalId: 3, afterFixed: -1 }],
+      options: { total: 1 },
+    })
+    expect(before.kind).toBe('none') // total 1 is used up
+    const free = run({
+      nodes: [A, x1, x2, B],
+      offers: chain,
+      fixed: [1, 2],
+      accepted: [{ terminalId: 3, afterFixed: 1 }],
+    })
+    // the gap itself is empty: X2 may still be suggested (Waste X2 → B) with 2 of 4 used
+    expect(stopIds(free)).toEqual([4])
+    expect(ok(free).route).toEqual([1, 4, 2, 3])
+  })
+
+  it('recomputing after accepting every suggestion with default options finds nothing more', () => {
+    const first = ok(run({ nodes: [A, x1, x2, B], offers: chain, fixed: [1, 2] }))
+    const accepted: AcceptedStop[] = first.stops.map((s) => ({
+      terminalId: s.terminalId,
+      afterFixed: s.gapIndex,
+    }))
+    expect(accepted).toHaveLength(1)
+    const again = run({ nodes: [A, x1, x2, B], offers: chain, fixed: [1, 2], accepted })
+    expect(again.kind).toBe('none')
+  })
+
+  it('leaves exhausted limits alone: nothing is removed when the user lowered an option', () => {
+    // two accepted stops, per-gap lowered to 1: the search just finds no room
+    const out = run({
+      nodes: [A, x1, x2, B],
+      offers: chain,
+      fixed: [1, 2],
+      accepted: [
+        { terminalId: 3, afterFixed: 0 },
+        { terminalId: 4, afterFixed: 0 },
+      ],
+      options: { perGap: 1 },
+    })
+    expect(out.kind).toBe('none')
+  })
+
+  it('is deterministic', () => {
+    const args: Scenario = {
+      nodes: [A, x1, x2, B],
+      offers: chain,
+      fixed: [1, 2],
+      accepted: acceptedX1,
+      options: { perGap: 2 },
+    }
+    expect(run(args)).toEqual(run(args))
   })
 })

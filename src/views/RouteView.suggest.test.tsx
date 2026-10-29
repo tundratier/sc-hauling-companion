@@ -302,3 +302,168 @@ describe('suggestions in the route list', () => {
     expect(useAppStore.getState().stops).toEqual([4, 1, 2])
   })
 })
+
+describe('section order (§7.4)', () => {
+  it('lists the stops first, then Add stop, the route actions and Add profitable stops last', async () => {
+    seed()
+    serveMap()
+    const user = userEvent.setup()
+    render(<RouteView />)
+    await enable(user)
+    await waitForRows(1)
+    const list = screen.getByRole('list', { name: 'Route stops' })
+    const addStop = screen.getByRole('region', { name: 'Add stop' })
+    const reverse = screen.getByRole('button', { name: 'Reverse route' })
+    const profitable = screen.getByRole('region', { name: 'Add profitable stops' })
+    const before = (a: Node, b: Node) =>
+      expect(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    before(list, addStop)
+    before(addStop, reverse)
+    before(reverse, profitable)
+  })
+
+  it('keeps the summary, the budget and ADD ALL inside the profitable-stops section', async () => {
+    seed()
+    serveMap()
+    const user = userEvent.setup()
+    render(<RouteView />)
+    await enable(user)
+    await waitForRows(1)
+    const section = screen.getByRole('region', { name: 'Add profitable stops' })
+    expect(within(section).getByLabelText('Suggestion summary')).toBeInTheDocument()
+    expect(within(section).getByRole('button', { name: 'Add all' })).toBeInTheDocument()
+    expect(within(section).getByLabelText('Dynamic stop budget')).toHaveTextContent(
+      'dynamic stops 0 / 4 used',
+    )
+    // only one summary exists, and it comes after the stop list
+    const list = screen.getByRole('list', { name: 'Route stops' })
+    expect(screen.getAllByLabelText('Suggestion summary')).toHaveLength(1)
+    expect(
+      list.compareDocumentPosition(screen.getByLabelText('Suggestion summary')) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+  })
+})
+
+describe('accepted dynamic stops keep counting (§6.7, §7.4)', () => {
+  // Quartz X → Y (500) and Waste Y → B (500): with one stop per gap only Y pays (500);
+  // once Y is accepted, X must not be offered although it would add another 500.
+  const twoStopOffers = [
+    buyOffer(1, 3, 100),
+    sellOffer(1, 4, 150),
+    buyOffer(2, 4, 100),
+    sellOffer(2, 2, 150),
+  ]
+  const dynamicRoute = () =>
+    useAppStore.setState({ stops: [1, 4, 2], origins: ['fixed', 'dynamic', 'fixed'] })
+
+  it('marks accepted stops DYNAMIC and shows the used budget', async () => {
+    seed({ offers: twoStopOffers })
+    serveMap()
+    const user = userEvent.setup()
+    render(<RouteView />)
+    await enable(user)
+    await waitForRows(1)
+    expect(suggestedRows()[0]).toHaveTextContent('Yankee Station')
+    expect(screen.queryByText('DYNAMIC')).not.toBeInTheDocument()
+    await user.click(within(suggestedRows()[0]).getByRole('button', { name: 'Add' }))
+    expect(useAppStore.getState().stops).toEqual([1, 4, 2])
+    expect(useAppStore.getState().origins).toEqual(['fixed', 'dynamic', 'fixed'])
+    const rows = document.querySelectorAll<HTMLElement>('[data-stop-row]')
+    expect(rows[0]).not.toHaveTextContent('DYNAMIC')
+    expect(rows[1]).toHaveTextContent('Yankee Station')
+    expect(rows[1]).toHaveTextContent('DYNAMIC')
+    expect(rows[2]).not.toHaveTextContent('DYNAMIC')
+    // the accepted stop is a normal row: number, reorder buttons, remove
+    expect(within(rows[1]).getByRole('button', { name: 'Remove stop 2' })).toBeVisible()
+    await waitFor(() =>
+      expect(screen.getByLabelText('Dynamic stop budget')).toHaveTextContent(
+        'dynamic stops 1 / 4 used',
+      ),
+    )
+  })
+
+  it('does not free the per-gap budget after Add: no further stop in a full gap', async () => {
+    seed({ offers: twoStopOffers })
+    serveMap()
+    const user = userEvent.setup()
+    render(<RouteView />)
+    await enable(user)
+    await waitForRows(1)
+    await user.click(within(suggestedRows()[0]).getByRole('button', { name: 'Add' }))
+    await waitFor(() =>
+      expect(screen.getByText('No profitable stops within a 150 % detour')).toBeInTheDocument(),
+    )
+    expect(suggestedRows()).toHaveLength(0)
+    expect(useAppStore.getState().stops).toEqual([1, 4, 2])
+  })
+
+  it('suggests the rest of the gap once the per-gap limit allows it, in front of the accepted stop', async () => {
+    seed({ offers: twoStopOffers })
+    serveMap()
+    dynamicRoute()
+    useAppStore.getState().setSuggestOptions({ perGap: 2 })
+    const user = userEvent.setup()
+    render(<RouteView />)
+    await enable(user)
+    await waitForRows(1)
+    expect(suggestedRows()[0]).toHaveTextContent('Xray Outpost')
+    const items = [...document.querySelectorAll('.stops > li')].map((li) =>
+      li.hasAttribute('data-suggested') ? 'S' : li.textContent?.includes('DYNAMIC') ? 'D' : 'F',
+    )
+    expect(items).toEqual(['F', 'S', 'D', 'F']) // X sits before the accepted Y
+    await user.click(within(suggestedRows()[0]).getByRole('button', { name: 'Add' }))
+    expect(useAppStore.getState().stops).toEqual([1, 3, 4, 2])
+    expect(useAppStore.getState().origins).toEqual(['fixed', 'dynamic', 'dynamic', 'fixed'])
+  })
+
+  it('Add all marks every added stop dynamic and keeps the existing origins', async () => {
+    seed({ offers: twoStopOffers })
+    serveMap()
+    useAppStore.getState().setSuggestOptions({ perGap: 2 })
+    const user = userEvent.setup()
+    render(<RouteView />)
+    await enable(user)
+    await waitForRows(2)
+    await user.click(screen.getByRole('button', { name: 'Add all' }))
+    expect(useAppStore.getState().stops).toEqual([1, 3, 4, 2])
+    expect(useAppStore.getState().origins).toEqual(['fixed', 'dynamic', 'dynamic', 'fixed'])
+    expect(useAppStore.getState().trip).toEqual(INITIAL_TRIP)
+  })
+
+  it('says so when the accepted stops use up the total, and removes nothing', async () => {
+    seed({ offers: twoStopOffers })
+    serveMap()
+    dynamicRoute()
+    useAppStore.getState().setSuggestOptions({ perGap: 2, total: 1 })
+    const user = userEvent.setup()
+    render(<RouteView />)
+    await enable(user)
+    expect(await screen.findByText('1 of 1 dynamic stops used')).toBeInTheDocument()
+    expect(suggestedRows()).toHaveLength(0)
+    expect(useAppStore.getState().stops).toEqual([1, 4, 2])
+  })
+
+  it('disables the option while fewer than two fixed stops are left', () => {
+    seed()
+    serveMap()
+    useAppStore.setState({ stops: [1, 4], origins: ['fixed', 'dynamic'] })
+    render(<RouteView />)
+    expect(screen.getByRole('checkbox', { name: 'Add profitable stops' })).toBeDisabled()
+  })
+
+  it('removing a dynamic stop frees its budget', async () => {
+    seed({ offers: twoStopOffers })
+    serveMap()
+    dynamicRoute()
+    const user = userEvent.setup()
+    render(<RouteView />)
+    await enable(user)
+    await user.click(screen.getByRole('button', { name: 'Remove stop 2' }))
+    await waitForRows(1)
+    expect(suggestedRows()[0]).toHaveTextContent('Yankee Station')
+    expect(screen.getByLabelText('Dynamic stop budget')).toHaveTextContent(
+      'dynamic stops 0 / 4 used',
+    )
+  })
+})

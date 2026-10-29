@@ -1144,8 +1144,8 @@ select.input:disabled {
 }
 
 .suggest__summary {
-  border-style: dashed;
-  border-color: var(--amber-dim);
+  padding-top: 10px;
+  border-top: 1px dashed var(--amber-dim);
 }
 
 .suggest__title {
@@ -1154,4 +1154,10 @@ select.input:disabled {
 
 .suggest__settings-btn {
   align-self: flex-start;
+}
+
+/* Accepted dynamic stop: badge after the terminal name (SPEC §7.4) */
+.stop__badge {
+  margin-left: 8px;
+  vertical-align: 1px;
 }

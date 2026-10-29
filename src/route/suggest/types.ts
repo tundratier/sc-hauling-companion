@@ -40,9 +40,24 @@ export function normalizeSuggestOptions(o: Partial<SuggestOptions>): SuggestOpti
   }
 }
 
+/** Where a route stop comes from (§6.7): entered by the user, or an accepted suggestion. */
+export type StopOrigin = 'fixed' | 'dynamic'
+
+/**
+ * An accepted dynamic stop: already placed, never moved or removed by the search, but counted
+ * against every limit. It sits after fixed stop `afterFixed` (-1: before the first fixed stop,
+ * `fixed.length - 1`: after the last one; those two belong to no gap).
+ */
+export interface AcceptedStop {
+  terminalId: number
+  afterFixed: number
+}
+
 export interface SuggestRequest {
   /** The fixed stops: terminal ids in route order. */
   fixed: number[]
+  /** Accepted dynamic stops in route order (default: none). */
+  accepted?: AcceptedStop[]
   /** Current calc inputs (`stops` is ignored). */
   calc: Omit<CalcInput, 'stops'>
   options: SuggestOptions
@@ -70,6 +85,8 @@ export interface SuggestedStop {
   position: number
   /** Index in the combined route (`SuggestResult.route`). */
   routeIndex: number
+  /** Index in the current stop list at which it would be inserted. */
+  insertAt: number
   role: SuggestedRole
 }
 
@@ -82,8 +99,10 @@ export interface SuggestResult {
   distanceAfter: number
   /** The chosen chain over the combined route, §6.6 form. */
   legs: StopoverLeg[]
-  /** Combined route: fixed and dynamic terminal ids in order. */
+  /** Combined route: fixed, accepted and suggested terminal ids in order. */
   route: number[]
+  /** Origin per `route` entry (suggested stops become `dynamic`). */
+  origins: StopOrigin[]
   /** The time budget was hit: the best result found so far. */
   bestFound: boolean
 }

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { loadTerminalMap, type LoadedMap } from '../api/terminalMap'
-import type { SuggestResult } from '../route/suggest'
+import { splitRoute, type SuggestResult } from '../route/suggest'
 import { getSuggestClient } from '../route/suggest/suggestClient'
 import { useAppStore } from '../state/useAppStore'
 import { useDataStore } from '../state/useDataStore'
@@ -37,6 +37,8 @@ type MapState =
  */
 export function useSuggestions(): SuggestionState {
   const stops = useAppStore((s) => s.stops)
+  const origins = useAppStore((s) => s.origins)
+  const { fixed, accepted } = useMemo(() => splitRoute(stops, origins), [stops, origins])
   const options = useAppStore((s) => s.suggest)
   const dismissed = useSuggestUi((s) => s.dismissed)
   const resetDismissed = useSuggestUi((s) => s.reset)
@@ -50,7 +52,7 @@ export function useSuggestions(): SuggestionState {
   const [mapState, setMapState] = useState<MapState>({ status: 'idle' })
   const [outcome, setOutcome] = useState<{ key: object; value: SuggestionState } | null>(null)
 
-  const wanted = options.enabled && stops.length >= 2
+  const wanted = options.enabled && fixed.length >= 2
 
   // Dismissals last until the route is cleared.
   useEffect(() => {
@@ -93,7 +95,7 @@ export function useSuggestions(): SuggestionState {
   const signature = useMemo(
     () => ({}),
     // oxlint-disable-next-line react/exhaustive-deps
-    [stops, calc, options, dismissed, readyMap, readyData, readyOffers],
+    [fixed, accepted, calc, options, dismissed, readyMap, readyData, readyOffers],
   )
 
   // The search itself: debounced, latest request only.
@@ -105,7 +107,8 @@ export function useSuggestions(): SuggestionState {
       void getSuggestClient()
         .run({
           request: {
-            fixed: stops,
+            fixed,
+            accepted,
             calc,
             options,
             dismissed,
@@ -139,7 +142,7 @@ export function useSuggestions(): SuggestionState {
   }, [signature])
 
   if (!options.enabled) return { status: 'off' }
-  if (stops.length < 2) return { status: 'blocked', reason: 'Add at least two stops first.' }
+  if (fixed.length < 2) return { status: 'blocked', reason: 'Add at least two stops first.' }
   if (!staticData) return { status: 'blocked', reason: 'Ships and terminals are not loaded yet.' }
   if (!prices) {
     return {

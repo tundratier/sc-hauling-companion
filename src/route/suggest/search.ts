@@ -5,6 +5,7 @@ import { candidateTerminals } from './candidates'
 import type { MapIndexes } from './map'
 import {
   MAX_ROUTE_STOPS,
+  type StopOrigin,
   type SuggestOutcome,
   type SuggestRequest,
   type SuggestedRole,
@@ -63,16 +64,25 @@ function bestChain(seq: number[], weight: (a: number, b: number) => number): Cha
   return { profit: m > 0 ? f[m - 1] : 0, legs }
 }
 
+/** Role of a stop in the combined route: entered, accepted earlier, or newly suggested. */
+const FIXED = 0
+const ACCEPTED = 1
+const NEW = 2
+
 interface Best {
   p: number
   dist: number
   dyn: number
   seq: number[]
-  isDyn: number[]
+  kind: number[]
 }
 
 /**
  * Add profitable stops (§6.7): the best insertion of dynamic stops between the fixed stops.
+ *
+ * Accepted dynamic stops (`req.accepted`) are part of the route already: they are never moved,
+ * removed or replaced, but they count towards every limit and sit in their gap's stop sequence
+ * for the detour and forward rules. Only the remaining budget is filled with new stops.
  *
  * Exact search (depth-first over the gaps) for the options given. Pair profits and distances are
  * precomputed once, and the route profit of a stop list is evaluated incrementally while the
@@ -84,6 +94,10 @@ interface Best {
 export function suggestStops(req: SuggestRequest, env: SuggestEnv): SuggestOutcome {
   const { fixed, options } = req
   const n = fixed.length
+  const accepted = (req.accepted ?? []).map((a) => ({
+    terminalId: a.terminalId,
+    afterFixed: Math.min(n - 1, Math.max(-1, a.afterFixed)),
+  }))
   if (n < 2) return { kind: 'unavailable', reason: 'Add at least two stops first.' }
   if (!fixed.some((id) => env.map.nodeOfTerminal(id))) {
     return { kind: 'unavailable', reason: 'None of the stops has a position on the map.' }
@@ -92,11 +106,18 @@ export function suggestStops(req: SuggestRequest, env: SuggestEnv): SuggestOutco
   const budgetMs = req.budgetMs ?? DEFAULT_BUDGET_MS
 
   // --- candidates, pruned per gap by the single-stop detour --------------------------------
-  const pool = candidateTerminals(env.terminals, fixed, req.dismissed, env.map, env.data)
+  const pool = candidateTerminals(
+    env.terminals,
+    [...fixed, ...accepted.map((a) => a.terminalId)],
+    req.dismissed,
+    env.map,
+    env.data,
+  )
+  const acceptedInGap = (g: number) => accepted.filter((a) => a.afterFixed === g).length
   const gapCandidates: number[][] = [] // terminal ids per gap
   for (let g = 0; g < n - 1; g++) {
     const dAB = env.map.distance(fixed[g], fixed[g + 1])
-    if (dAB === null || options.perGap < 1) {
+    if (dAB === null || options.perGap - acceptedInGap(g) < 1) {
       gapCandidates.push([])
       continue
     }
@@ -122,6 +143,7 @@ export function suggestStops(req: SuggestRequest, env: SuggestEnv): SuggestOutco
     }
   }
   fixed.forEach(add)
+  accepted.forEach((a) => add(a.terminalId))
   for (const list of gapCandidates) list.forEach(add)
   const u = ids.length
   const pp = pairProfits(ids, req.calc, env.data, req.nowSec)
@@ -150,21 +172,25 @@ export function suggestStops(req: SuggestRequest, env: SuggestEnv): SuggestOutco
     list.map((id) => indexOf.get(id) ?? -1).filter((x) => x >= 0 && useful(x)),
   )
   const fixedU = fixed.map((id) => indexOf.get(id) ?? -1)
+  /** Accepted stops (universe indexes) per gap, shifted by one: slot 0 = before the first fixed stop. */
+  const acceptedU: number[][] = Array.from({ length: n + 1 }, () => [])
+  for (const a of accepted) acceptedU[a.afterFixed + 1].push(indexOf.get(a.terminalId) ?? -1)
 
   // --- depth-first search -------------------------------------------------------------------
   const seq = new Int32Array(MAX_ROUTE_STOPS + 1)
-  const isDyn = new Uint8Array(MAX_ROUTE_STOPS + 1)
+  const kind = new Uint8Array(MAX_ROUTE_STOPS + 1)
   const f = new Float64Array(MAX_ROUTE_STOPS + 1)
   let m = 0
-  let dyn = 0
+  let dyn = accepted.length
   let distSum = 0
   const used = new Uint8Array(u)
   const groupCount = new Int32Array(groupList.length)
+  for (const list of acceptedU) for (const x of list) groupCount[groupOfU[x]]++
   let bestFound = false
   let nodes = 0
   const holder: { best: Best | null } = { best: null }
 
-  const push = (x: number, dynamic: boolean) => {
+  const push = (x: number, k: number) => {
     let top = m > 0 ? f[m - 1] : 0
     for (let i = 0; i < m; i++) {
       const p = f[i] + w(seq[i], x)
@@ -176,7 +202,7 @@ export function suggestStops(req: SuggestRequest, env: SuggestEnv): SuggestOutco
       distSum += Number.isNaN(d) ? 0 : d
     }
     seq[m] = x
-    isDyn[m] = dynamic ? 1 : 0
+    kind[m] = k
     m++
   }
   const pop = () => {
@@ -187,9 +213,9 @@ export function suggestStops(req: SuggestRequest, env: SuggestEnv): SuggestOutco
     }
   }
 
-  const dynamicIds = (s: ArrayLike<number>, flags: ArrayLike<number>, len: number) => {
+  const newIds = (s: ArrayLike<number>, kinds: ArrayLike<number>, len: number) => {
     const out: number[] = []
-    for (let i = 0; i < len; i++) if (flags[i]) out.push(ids[s[i]])
+    for (let i = 0; i < len; i++) if (kinds[i] === NEW) out.push(ids[s[i]])
     return out
   }
 
@@ -201,8 +227,8 @@ export function suggestStops(req: SuggestRequest, env: SuggestEnv): SuggestOutco
     if (p !== current.p) return p > current.p
     if (Math.abs(distSum - current.dist) > EPS) return distSum < current.dist
     if (dyn !== current.dyn) return dyn < current.dyn
-    const mine = dynamicIds(seq, isDyn, m)
-    const theirs = dynamicIds(current.seq, current.isDyn, current.seq.length)
+    const mine = newIds(seq, kind, m)
+    const theirs = newIds(current.seq, current.kind, current.seq.length)
     for (let i = 0; i < mine.length; i++) if (mine[i] !== theirs[i]) return mine[i] < theirs[i]
     return false
   }
@@ -219,37 +245,70 @@ export function suggestStops(req: SuggestRequest, env: SuggestEnv): SuggestOutco
     g < n - 1 ? (D(a, fixedU[g + 1]) * options.detourPct) / 100 + EPS : 0,
   )
 
-  const dfs = (g: number, gapCount: number, gapDist: number) => {
+  const record = () => {
+    if (!better()) return
+    holder.best = {
+      p: f[m - 1],
+      dist: distSum,
+      dyn,
+      seq: Array.from(seq.subarray(0, m)),
+      kind: Array.from(kind.subarray(0, m)),
+    }
+  }
+
+  /**
+   * Fill the gap after fixed stop `g`. `placed` accepted stops of the gap are in the sequence
+   * already, `fresh` new stops were inserted, `gapDist` is the path length from the gap's first
+   * stop to the last one, and `bad` records a forward or distance violation among the stops so
+   * far. A gap without new stops is never judged (accepted stops are left as the user placed
+   * them); a gap with new stops has to satisfy the detour and forward rules as a whole.
+   */
+  const dfs = (g: number, placed: number, fresh: number, gapDist: number, bad: boolean) => {
     if ((++nodes & 1023) === 0 && performance.now() - t0 > budgetMs) bestFound = true
     if (bestFound) return
     const last = seq[m - 1]
     const B = fixedU[g + 1]
+    const inGap = acceptedU[g + 1]
 
-    // option 1: leave the gap, the next stop is the fixed stop B
-    const dLB = D(last, B)
-    const closeOk =
-      gapCount === 0 ||
-      (!Number.isNaN(dLB) && gapDist + dLB <= gapBudget[g] && forwardOk(last, B, B))
-    if (closeOk) {
-      push(B, false)
-      if (g + 1 === n - 1) {
-        if (better()) {
-          holder.best = {
-            p: f[m - 1],
-            dist: distSum,
-            dyn,
-            seq: Array.from(seq.subarray(0, m)),
-            isDyn: Array.from(isDyn.subarray(0, m)),
-          }
-        }
-      } else {
-        dfs(g + 1, 0, 0)
+    // option 1: the next accepted stop of the gap comes next (forced order, never skipped)
+    if (placed < inGap.length) {
+      const x = inGap[placed]
+      const dLX = D(last, x)
+      const nextBad = bad || Number.isNaN(dLX) || !forwardOk(last, x, B)
+      if (fresh === 0 || !nextBad) {
+        push(x, ACCEPTED)
+        dfs(g, placed + 1, fresh, gapDist + (Number.isNaN(dLX) ? 0 : dLX), nextBad)
+        pop()
       }
-      pop()
+    } else {
+      // option 2: leave the gap, the next stop is the fixed stop B
+      const dLB = D(last, B)
+      const closeOk =
+        fresh === 0 ||
+        (!bad && !Number.isNaN(dLB) && gapDist + dLB <= gapBudget[g] && forwardOk(last, B, B))
+      if (closeOk) {
+        push(B, FIXED)
+        if (g + 1 === n - 1) {
+          const tail = acceptedU[n]
+          for (const x of tail) push(x, ACCEPTED)
+          record()
+          for (let i = 0; i < tail.length; i++) pop()
+        } else {
+          dfs(g + 1, 0, 0, 0, false)
+        }
+        pop()
+      }
     }
 
-    // option 2: insert one more dynamic stop into this gap
-    if (gapCount >= options.perGap || dyn >= options.total || n + dyn + 1 > MAX_ROUTE_STOPS) return
+    // option 3: insert one more new stop here (before the next accepted stop, if any)
+    if (
+      bad ||
+      fresh + inGap.length >= options.perGap ||
+      dyn >= options.total ||
+      n + dyn + 1 > MAX_ROUTE_STOPS
+    ) {
+      return
+    }
     for (const x of gapU[g]) {
       if (used[x] || groupCount[groupOfU[x]] >= options.perGroup) continue
       const dLX = D(last, x)
@@ -260,8 +319,8 @@ export function suggestStops(req: SuggestRequest, env: SuggestEnv): SuggestOutco
       used[x] = 1
       groupCount[groupOfU[x]]++
       dyn++
-      push(x, true)
-      dfs(g, gapCount + 1, gapDist + dLX)
+      push(x, NEW)
+      dfs(g, placed, fresh + 1, gapDist + dLX, false)
       pop()
       dyn--
       groupCount[groupOfU[x]]--
@@ -270,24 +329,27 @@ export function suggestStops(req: SuggestRequest, env: SuggestEnv): SuggestOutco
     }
   }
 
-  push(fixedU[0], false)
-  dfs(0, 0, 0)
+  for (const x of acceptedU[0]) push(x, ACCEPTED)
+  push(fixedU[0], FIXED)
+  dfs(0, 0, 0, 0, false)
   const chosen = holder.best
   if (!chosen) return { kind: 'none', bestFound }
 
-  // --- result: drop dynamic stops the chain does not use, rebuild chain and roles -----------
+  // --- result: drop new stops the chain does not use, rebuild chain and roles ---------------
   const chain = bestChain(chosen.seq, w)
   const onChain = new Set<number>()
   for (const leg of chain.legs) {
     onChain.add(leg.from)
     onChain.add(leg.to)
   }
-  const keep = chosen.seq.map((_, i) => !chosen.isDyn[i] || onChain.has(i))
+  const keep = chosen.seq.map((_, i) => chosen.kind[i] !== NEW || onChain.has(i))
   const finalSeq = chosen.seq.filter((_, i) => keep[i])
-  const finalDyn = chosen.isDyn.filter((_, i) => keep[i])
+  const finalKind = chosen.kind.filter((_, i) => keep[i])
   const final = bestChain(finalSeq, w)
-  const fixedOnly = bestChain(fixedU, w)
-  if (!(final.profit > fixedOnly.profit) || finalDyn.every((d) => !d)) {
+  // the current route: fixed and accepted stops, without any suggestion
+  const current = finalSeq.filter((_, i) => finalKind[i] !== NEW)
+  const before = bestChain(current, w)
+  if (!(final.profit > before.profit) || finalKind.every((k) => k !== NEW)) {
     return { kind: 'none', bestFound }
   }
 
@@ -303,10 +365,14 @@ export function suggestStops(req: SuggestRequest, env: SuggestEnv): SuggestOutco
   const stops: SuggestedStop[] = []
   let gap = -1
   let position = 0
+  let existing = 0
   finalSeq.forEach((x, i) => {
-    if (!finalDyn[i]) {
-      gap++
-      position = 0
+    if (finalKind[i] !== NEW) {
+      if (finalKind[i] === FIXED) {
+        gap++
+        position = 0
+      }
+      existing++
       return
     }
     const role: SuggestedRole = {}
@@ -323,7 +389,14 @@ export function suggestStops(req: SuggestRequest, env: SuggestEnv): SuggestOutco
         }
       }
     }
-    stops.push({ terminalId: ids[x], gapIndex: gap, position: position++, routeIndex: i, role })
+    stops.push({
+      terminalId: ids[x],
+      gapIndex: gap,
+      position: position++,
+      routeIndex: i,
+      insertAt: existing,
+      role,
+    })
   })
 
   const pathLength = (path: number[]) => {
@@ -339,12 +412,13 @@ export function suggestStops(req: SuggestRequest, env: SuggestEnv): SuggestOutco
     kind: 'ok',
     result: {
       stops,
-      profitBefore: fixedOnly.profit,
+      profitBefore: before.profit,
       profitAfter: final.profit,
-      distanceBefore: pathLength(fixedU),
+      distanceBefore: pathLength(current),
       distanceAfter: pathLength(finalSeq),
       legs,
       route: finalSeq.map((x) => ids[x]),
+      origins: finalKind.map((k): StopOrigin => (k === FIXED ? 'fixed' : 'dynamic')),
       bestFound,
     },
   }

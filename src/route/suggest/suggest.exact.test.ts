@@ -194,3 +194,155 @@ describe('suggestStops is exact on small random instances', () => {
     expect(suggested).toBeGreaterThanOrEqual(10)
   })
 })
+
+let suggestedWithAccepted = 0
+
+describe('suggestStops is exact with accepted dynamic stops already in the route', () => {
+  it.each(Array.from({ length: 40 }, (_, i) => i + 101))('instance %i', (seed) => {
+    const inst = instance(seed)
+    const r = rng(seed * 7 + 3)
+    const nFixed = inst.fixed.length
+    const acceptedTerminal = inst.pool[Math.floor(r() * inst.pool.length)]
+    // gap g, or before the first (-1) / after the last fixed stop (nFixed - 1)
+    const acceptedAfter = Math.floor(r() * (nFixed + 1)) - 1
+    const map = buildMapIndexes(euclid(inst.nodes, inst.pos))
+    const terminals = inst.nodes.flatMap((n) => n.terminals).map((id) => terminal(id))
+    const data = makeData({ commodities, terminals, offers: inst.offers })
+    const { options } = inst
+    const pool = inst.pool.filter((t) => t !== acceptedTerminal)
+
+    const profitOf = (route: number[]) => {
+      const { hauls } = generateCandidates(makeInput({ ...calc, stops: route }), data, NOW)
+      const best = new Map<string, number>()
+      for (const h of hauls) {
+        const key = `${h.from}>${h.to}`
+        best.set(key, Math.max(best.get(key) ?? 0, h.profit))
+      }
+      const f = new Array<number>(route.length).fill(0)
+      for (let k = 1; k < route.length; k++) {
+        f[k] = f[k - 1]
+        for (let i = 0; i < k; i++) f[k] = Math.max(f[k], f[i] + (best.get(`${i}>${k}`) ?? 0))
+      }
+      return f[route.length - 1]
+    }
+    const dist = (a: number, b: number) => map.distance(a, b) as number
+    const groupOf = (id: number) => {
+      const node = map.nodeOfTerminal(id)
+      return node ? map.groupOf(node) : `t${id}`
+    }
+    const sequences = (max: number): number[][] => {
+      const out: number[][] = [[]]
+      const extend = (cur: number[]) => {
+        if (cur.length === max) return
+        for (const t of pool) {
+          if (cur.includes(t)) continue
+          out.push([...cur, t])
+          extend([...cur, t])
+        }
+      }
+      extend([])
+      return out
+    }
+    const insertAt = (seq: number[], at: number, id: number) => [
+      ...seq.slice(0, at),
+      id,
+      ...seq.slice(at),
+    ]
+
+    // every full stop sequence (new stops + the accepted one) of gap g that is allowed
+    const gapOptions = (g: number): { seq: number[]; fresh: number[] }[] => {
+      const a = inst.fixed[g]
+      const b = inst.fixed[g + 1]
+      const hasAccepted = acceptedAfter === g
+      const room = options.perGap - (hasAccepted ? 1 : 0)
+      const out: { seq: number[]; fresh: number[] }[] = []
+      for (const fresh of sequences(Math.max(0, room))) {
+        const placements = hasAccepted
+          ? Array.from({ length: fresh.length + 1 }, (_, at) =>
+              insertAt(fresh, at, acceptedTerminal),
+            )
+          : [fresh]
+        for (const seq of placements) {
+          if (fresh.length > 0) {
+            const path = [a, ...seq, b]
+            let total = 0
+            for (let i = 1; i < path.length; i++) total += dist(path[i - 1], path[i])
+            if (total > (dist(a, b) * options.detourPct) / 100 + 1e-9) continue
+            let forward = true
+            for (let i = 1; i < path.length; i++) {
+              const u = path[i - 1]
+              const v = path[i]
+              if (groupOf(u) !== groupOf(v) && !(dist(v, b) < dist(u, b))) forward = false
+            }
+            if (!forward) continue
+          }
+          out.push({ seq, fresh })
+        }
+      }
+      return out
+    }
+
+    const perGap = Array.from({ length: nFixed - 1 }, (_, g) => gapOptions(g))
+    const head = acceptedAfter === -1 ? [acceptedTerminal] : []
+    const tail = acceptedAfter === nFixed - 1 ? [acceptedTerminal] : []
+    const current = [
+      ...head,
+      ...inst.fixed.flatMap((id, i) => [
+        id,
+        ...(acceptedAfter === i && i < nFixed - 1 ? [acceptedTerminal] : []),
+      ]),
+      ...tail,
+    ]
+    const base = profitOf(current)
+    let best = base
+    const walk = (g: number, chosen: { seq: number[]; fresh: number[] }[]) => {
+      if (g === perGap.length) {
+        const fresh = chosen.flatMap((c) => c.fresh)
+        if (new Set(fresh).size !== fresh.length) return
+        const dynamic = [...fresh, acceptedTerminal]
+        if (dynamic.length > options.total || nFixed + dynamic.length > 10) return
+        const perGroup = new Map<string, number>()
+        for (const t of dynamic) perGroup.set(groupOf(t), (perGroup.get(groupOf(t)) ?? 0) + 1)
+        if ([...perGroup.values()].some((c) => c > options.perGroup)) return
+        const route = [
+          ...head,
+          ...inst.fixed.flatMap((id, i) => [id, ...(chosen[i]?.seq ?? [])]),
+          ...tail,
+        ]
+        best = Math.max(best, profitOf(route))
+        return
+      }
+      for (const option of perGap[g]) walk(g + 1, [...chosen, option])
+    }
+    walk(0, [])
+
+    const outcome = suggestStops(
+      {
+        fixed: inst.fixed,
+        accepted: [{ terminalId: acceptedTerminal, afterFixed: acceptedAfter }],
+        calc,
+        options,
+        dismissed: [],
+        nowSec: NOW,
+      },
+      { terminals, data, map },
+    )
+    if (best > base) {
+      expect(outcome.kind).toBe('ok')
+      suggestedWithAccepted++
+      if (outcome.kind === 'ok') {
+        expect(outcome.result.profitAfter).toBe(best)
+        expect(outcome.result.profitBefore).toBe(base)
+        expect(profitOf(outcome.result.route)).toBe(best)
+        expect(outcome.result.route).toContain(acceptedTerminal)
+        expect(outcome.result.stops.length + 1).toBeLessThanOrEqual(options.total)
+      }
+    } else {
+      expect(outcome.kind).toBe('none')
+    }
+  })
+
+  it('the instances exercise the search, not only the "no suggestion" path', () => {
+    expect(suggestedWithAccepted).toBeGreaterThanOrEqual(5)
+  })
+})
