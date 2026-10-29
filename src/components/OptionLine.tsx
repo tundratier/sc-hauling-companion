@@ -1,7 +1,7 @@
 import { useId, useState, type ReactNode } from 'react'
 import type { Haul } from '../calc'
 import type { Terminal } from '../domain/types'
-import { formatAgeDays, formatInt, formatPercent } from '../lib/format'
+import { formatAgeDays, formatInt, formatPercent, formatSigned } from '../lib/format'
 import { activeWarnings, describeWarning, reportedSummary } from '../lib/inventoryText'
 import { shortName } from '../lib/terminalNames'
 import { Badges, MAX_COLLAPSED_BADGES, haulBadges } from './Badges'
@@ -33,6 +33,25 @@ function Field({ label, value }: { label: string; value: string }) {
 export function boxBreakdown(haul: Haul): string {
   const parts = haul.boxes.map((b) => `${b.count}×${b.size}`).join(' + ')
   return `${parts} = ${haul.boxCount} box${haul.boxCount === 1 ? '' : 'es'}`
+}
+
+/** The stops a haul passes without selling, 1-based: "#2" or "#2–#4". */
+export function skippedStops(haul: Haul): string {
+  const first = haul.from + 2
+  return haul.to === first ? `#${first}` : `#${first}–#${haul.to}`
+}
+
+/** `▲ 4,200 more than via #2` / `▼ 3,100 less than via #2` / `= same as via #2` */
+export function stopoverVerdict(haul: Haul): { text: string; better: boolean | null } | null {
+  const cmp = haul.stopovers
+  if (!cmp) return null
+  const via = `via ${skippedStops(haul)}`
+  if (cmp.delta === 0) return { text: `= same as ${via}`, better: null }
+  const better = cmp.delta > 0
+  return {
+    text: `${better ? '▲' : '▼'} ${formatInt(Math.abs(cmp.delta))} ${better ? 'more' : 'less'} than ${via}`,
+    better,
+  }
 }
 
 /** The collapsed line: a toggle button at the current stop, plain content elsewhere. */
@@ -90,6 +109,7 @@ export function OptionLine({
   const sellName = shortName(terminalById.get(stops[haul.to]), stops[haul.to])
   const badges = haulBadges(haul)
   const reported = reportedSummary(haul)
+  const verdict = stopoverVerdict(haul)
 
   return (
     <li className={`option${expanded ? ' option--open' : ''}${bought ? ' option--bought' : ''}`}>
@@ -133,6 +153,13 @@ export function OptionLine({
             <span className="num option__unit"> aUEC</span>
           </span>
           <span className="num muted option__roi">{formatPercent(haul.roi)}</span>
+          {verdict && (
+            <span
+              className={`num option__via${verdict.better === false ? ' option__via--worse' : ''}`}
+            >
+              {verdict.text}
+            </span>
+          )}
         </LineTag>
         <button
           type="button"
@@ -195,6 +222,28 @@ export function OptionLine({
               value={`buy ${formatAgeDays(haul.buyAgeDays)} · sell ${formatAgeDays(haul.sellAgeDays)}`}
             />
           </div>
+          {haul.stopovers && (
+            <div className="option__stopovers">
+              <span className="label">Trading via {skippedStops(haul)} instead</span>
+              {haul.stopovers.legs.length > 0 ? (
+                <div className="option__legs num">
+                  {haul.stopovers.legs.map((leg) => (
+                    <span key={`${leg.from}-${leg.to}`}>
+                      #{leg.from + 1} → #{leg.to + 1} {leg.commodityName}{' '}
+                      <span className="option__leg-profit">{formatInt(leg.profit)}</span>
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p className="muted">No profitable trade sells at {skippedStops(haul)}.</p>
+              )}
+              <div className="fields">
+                <Field label="Via stops" value={formatInt(haul.stopovers.profit)} />
+                <Field label="Skipping" value={formatInt(haul.profit)} />
+                <Field label="Difference" value={formatSigned(haul.stopovers.delta)} />
+              </div>
+            </div>
+          )}
           <Badges badges={badges} />
           <p className="num muted option__reported">
             Reported — buy: {reported.buy} · sell: {reported.sell}

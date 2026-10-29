@@ -6,6 +6,8 @@ This document is the single source of truth for implementing v1.0. It is written
 
 ### Revision history
 
+**Revision 10 (2026-10-29)** — skip lines are compared with the best chain of trades via the skipped stops: calculation in §6.6, a verdict row on the collapsed line and the chain's legs in the details (§7.5), acceptance criterion 16, tests (§8.1).
+
 **Revision 9 (2026-10-28)** — deployment to GitHub Pages on every push to `master` (§2.1, §9.3): `check` and `dist` Docker stages, `BASE_PATH` build arg mapped to Vite `base`.
 
 **Revision 8 (2026-10-28)** — full screen toggle button in the header strip (§7.2) and acceptance criterion 15.
@@ -416,6 +418,19 @@ Run the calculation in `useMemo`. Expected input is ≤ 10 stops × ~60 commodit
 
 **Same terminal twice**: stops are positions, so a terminal visited twice is treated as two independent stops.
 
+### 6.6 Skip hauls vs. trading via the skipped stops
+
+Every skip haul i→j (`skips > 0`) is compared with the **best chain of hauls from i to j that sells at least once at a skipped stop** (`src/calc/stopovers.ts`, after candidate generation):
+
+- Each leg of a chain is one candidate haul at its own `qtyMax` (full free space), any commodity; a leg may itself skip stops. A segment without a profitable haul carries nothing (profit 0).
+- Interval DP over stop pairs (n ≤ 10, negligible cost):
+  - `best(a, b)` = max of the most profitable direct haul a→b, `via(a, b)`, and 0;
+  - `via(a, b)` = max over `a < k < b` of `best(a, k) + best(k, b)`.
+- The haul gets `stopovers = { profit: via(i, j), legs, delta: haul.profit − via(i, j) }`, where `legs` lists the chain's hauls in route order (commodity name, from, to, profit) and leaves out empty segments. Hauls without skips have `stopovers = null`.
+- Like everything else, the comparison ignores reported inventory and assumes the full hold on every leg.
+
+Example: A→C Laranite 10,000 vs. A→B Agricium 4,000 + B→C Waste 5,000 → `delta = +1,000` (skipping pays more).
+
 ---
 
 ## 7. User interface
@@ -522,12 +537,14 @@ These values are a starting point. Tune them in the browser to match the warm-wh
   - Row 2: `→ #3 TDD Area 18` — sell stop number + short terminal name (`nickname`, falling back to `displayname`), followed by **all badges** (`SKIPS 1`, `ILLEGAL`, warnings …).
   - **Buy and sell price per SCU**, always visible without expanding: `BUY 2,810 → SELL 3,315 /SCU`. Labels in `--amber-dim`, values in `--amber`, tabular numerals.
   - **Profit** for the full load (`--amber-bright`, right-aligned) and ROI %.
+  - **Skip lines only** — a fourth row, full width, 13 px mono, compares the line with trading via the skipped stops (§6.6): `▲ 1,000 more than via #2` in `--amber`, `▼ 460 less than via #2–#3` in `--warn`, or `= same as via #2`. Skipped stops are 1-based, a range when several.
   - Example layout at 360 px (illustrative values):
 
     ```
     Laranite □ 4·8·16                  [ DETAILS ⌄ ]
     → #3 TDD Area 18 [SKIPS 1] [ILLEGAL] +22,220 aUEC
     BUY 2,810 → SELL 3,315 /SCU             18.0 %
+    ▲ 1,000 more than via #2
     ```
 - **Details button** — it must clearly look like a button, unlike the bare `v` of revision 4:
   - **Label:** text `DETAILS` plus a chevron; when open, `HIDE` plus the chevron rotated 180°. Uppercase mono, 12 px, `--amber`.
@@ -547,6 +564,7 @@ These values are a starting point. Tune them in the browser to match the warm-wh
   - Quantity (`44 of 46 SCU`, plus "2 SCU unused · min box 4" when applicable) and the box breakdown with count.
   - Investment, revenue, profit, ROI.
   - Price ages for both rows.
+  - Skip lines: "Trading via #2 instead" with one row per chain leg (`#1 → #2 Agricium 4,000`) or "No profitable trade sells at #2.", then the fields Via stops, Skipping (the line's profit) and Difference (signed).
   - Reported inventory with its explanation, e.g. "Reported 9 h ago: stock Out of Stock (0–14 %), 0 SCU. Inventory may have refilled since." This replaces the tappable badges.
 - **Badges** are small, non-interactive chips: height ≈ 18–20 px, font 11 px uppercase, padding 0 6 px, 1 px outline. They are **not** touch targets.
   - Types: `ILLEGAL` (`--warn` fill), `SKIPS n` (amber outline), `STALE 9d`, `VOLATILE`.
@@ -647,6 +665,7 @@ interface BoughtLine {
     - After the last departure, `COMPLETE ROUTE` clears the stops and opens ROUTE.
     - Trip progress survives a page reload and resets when the route is edited.
 15. The header's full screen button enters and leaves full screen. Its icon and label follow the real state, including leaving with Esc. It is absent where the Fullscreen API is unavailable. Unit-tested with a mocked Fullscreen API: supported, unsupported, and rejected request.
+16. Every skip line shows, without expanding, how much more or less it earns than the best chain of trades via the skipped stops (§6.6); the expanded line lists that chain's legs and the difference. Lines without skips show no comparison.
 
 ### 8.1 Required unit tests (minimum)
 
@@ -654,6 +673,7 @@ interface BoughtLine {
 - `maxFillable`: `(46,{1,2,4,8,16}) = 46`, `(46,{8,16}) = 40`, `(7,{8,16}) = 0`, `(30,{24}) = 24`.
 - Candidate generation: excludes raw, non-positive margin, empty box sets; inventory statuses only set warning flags (never exclude or cap).
 - Box range: `{min 4, max 16}` with buy sizes `1,2,4,8,16,24,32` → B = {4,8,16}; buy sizes `1,2` with min 4 → dropped as `boxTooSmall`; sell row sizes narrow B; 46 SCU with B = {4,8,16} → 44 SCU, 2 unused.
+- Stopover comparison (§6.6): A→C vs. A→B + B→C with different commodities; a longer skip whose best chain contains a skip leg; negative delta; empty chain (profit 0, no legs); hauls without skips stay `null`.
 - Per-stop grouping: lines grouped by buy stop, one line per (commodity, sell stop), last stop empty, all four sort orders descending with the specified tie-break.
 - Terminal secondary line: the examples table in §7.4.
 - Trip state as pure reducer functions (e.g. `src/trip/tripReducer.ts`): toggle bought (only at the current stop), depart, undo, complete, reset on route change, reminders per stop, on-board list, snapshot survival when a line disappears from the results.
