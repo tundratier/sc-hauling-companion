@@ -6,6 +6,11 @@ This document is the single source of truth for implementing v1.0. It is written
 
 ### Revision history
 
+**Revision 13 (2026-10-29)** — product owner review of "add profitable stops":
+- Every route stop remembers its **origin** (`fixed` = entered by the user, `dynamic` = accepted suggestion). Accepted dynamic stops **keep counting** towards the per-gap, total and per-group limits, and they still count after a recompute, so accepting suggestions no longer frees the budget for more (§6.7, §7.4).
+- ROUTE order: stop list → add stop → route actions → add profitable stops, with the summary and `ADD ALL` inside the profitable-stops section (§7.4).
+- Skip lines that earn less than their stopover chain (`▼ … less than …`) are collapsed to one compact row and dimmed (§7.5).
+
 **Revision 12 (2026-10-29)** — **add profitable stops**: the ROUTE view can suggest extra terminals between the fixed stops, using the pre-compiled terminal map (`docs/terminal-map.md`): map loading in §5.4, the search in §6.7, the UI in §7.4, acceptance criterion 17, tests (§8.1).
 
 **Revision 11 (2026-10-29)** — the skip verdict names the stops the comparison chain trades at (`#4 → #5`), not the skipped stops, which misread as the chain (§7.5).
@@ -447,6 +452,12 @@ Example: A→C Laranite 10,000 vs. A→B Agricium 4,000 + B→C Waste 5,000 → 
 
 The app can suggest **dynamic stops**: extra terminals inserted between the user's **fixed stops** (the route as entered) so that the route earns more. Pure functions in `src/route/suggest/` (no React); suggestions are only proposals, the route changes only when the user accepts them (§7.4).
 
+**Stop origin.** Every route stop carries `origin: 'fixed' | 'dynamic'` (persisted with the route; stops from older persisted state migrate as `fixed`). Stops added through the "Add stop" field are `fixed`; stops accepted with Add / Add all are `dynamic`. The origin travels with the stop on reorder, reverse and remove; removing a dynamic stop simply frees its budget. There is no conversion between the two.
+- The **gaps** are defined by the fixed stops only. Accepted dynamic stops sit inside their gap and are **already placed**: the search never moves, removes or replaces them, but they **count** towards every limit (per gap, total, per planetary group, fixed + dynamic ≤ 10) and they are part of the gap's stop sequence for the detour and forward rules. New suggestions only fill the remaining budget.
+- A dynamic stop before the first or after the last fixed stop (possible after manual reordering) belongs to no gap: it counts towards the total and per-group limits only.
+- `P(fixed stops only)` in the objective below means `P` of the **current route** (fixed + accepted dynamic stops); a suggestion must raise that.
+- If accepted stops already exhaust a limit (or violate it after the user lowered an option), nothing is removed: the search simply finds no room there, and the status says so ("4 of 4 dynamic stops used").
+
 **Route profit.** `P(route)` = `best(0, n−1)` of the §6.6 DP over the whole route: the most profitable chain of hauls, full hold per leg, any commodity per leg, legs may skip stops (so a chain may buy at a dynamic stop X before fixed stop B and sell at a dynamic stop Y after B), segments without a profitable haul carry nothing. Hauls are generated exactly as in §6.3 with the current calc inputs (§6.1: free SCU, ship box sizes, box range, illegal/volatile/price-age filters). Reported inventory is ignored, as everywhere.
 
 **Options** (persisted with the other user inputs):
@@ -464,14 +475,14 @@ The app can suggest **dynamic stops**: extra terminals inserted between the user
 - it has a node in the terminal map (§5.4);
 - it is **not in a city** (`city_name` empty); outposts, stations and moon/planet surface terminals without a city are fine;
 - its star system is one the fixed stops already use (**no new star systems**);
-- it is not one of the fixed stops and not dismissed by the user (§7.4);
+- it is not already a stop of the route (fixed or dynamic) and not dismissed by the user (§7.4);
 - it has at least one buy or sell offer of an eligible commodity (§6.2).
 
-**Constraints**, with `d(U, V)` = map travel distance between the terminals' nodes (§5.4), for every gap between consecutive fixed stops A, B with inserted stops X1…Xk (k ≤ per-gap max):
+**Constraints**, with `d(U, V)` = map travel distance between the terminals' nodes (§5.4), for every gap between consecutive fixed stops A, B with dynamic stops X1…Xk — accepted ones and new suggestions together, in route order (k ≤ per-gap max):
 - **Detour:** `d(A, X1) + d(X1, X2) + … + d(Xk, B) ≤ d(A, B) × p`. (Equivalently: reject when `d(A, B) × p < d(A, X1) + … + d(Xk, B)`.) If `d(A, B)` is unknown (a fixed stop without a map node), no stops are inserted in that gap.
 - **Forward:** for consecutive stops U → V of A, X1…Xk, B that are in **different planetary groups**: `d(V, B) < d(U, B)`. Inside one planetary group (planet ↔ its moons and stations) any order is allowed, which covers the small backtrack from a planet to its moon or station.
-- **Per planetary group:** at most the per-group max of dynamic stops in each planetary group over the whole route. Only terminal stops count: flying via a planet to reach a terminal on its moon is one stop (the map's `travel` already includes the via-planet distance). Fixed stops don't count towards the limit.
-- **Totals:** at most the total max of dynamic stops, and fixed + dynamic ≤ 10.
+- **Per planetary group:** at most the per-group max of dynamic stops in each planetary group over the whole route. Only terminal stops count: flying via a planet to reach a terminal on its moon is one stop (the map's `travel` already includes the via-planet distance). Fixed stops don't count towards the limit; accepted dynamic stops do.
+- **Totals:** at most the total max of dynamic stops (accepted + new), and fixed + dynamic ≤ 10.
 
 **Objective.** Among all insertions that satisfy the constraints, pick the one with the highest `P`; ties → shorter total travel distance `Σ d` over the route, then fewer dynamic stops, then the lexicographically smallest list of terminal ids. Then:
 - drop every dynamic stop the chosen chain neither buys nor sells at (it adds nothing);
@@ -571,11 +582,13 @@ These values are a starting point. Tune them in the browser to match the warm-wh
   - Results show as an overlay list above the on-screen keyboard; keyboard support (↑ ↓ Enter Esc) on desktop. Selecting adds the stop and clears the input (focus stays to add the next).
   - Start filtering at 1 character; no network calls (all local).
 - "Clear route" with confirmation; "Reverse route" button.
-- **Add profitable stops** (§6.7), below the stop list, collapsed by default:
+- **Section order** (top to bottom): trip-reset banner (if any) → stop list (with inline suggested rows) → stop count → **Add stop** field and "show unavailable terminals" → Reverse / Clear route → **Add profitable stops**. Entering the stops comes first; adding dynamic stops is the step after it.
+- **Accepted dynamic stops** in the stop list are normal stop rows (number, drag handle, reorder, remove) with a small `DYNAMIC` badge (amber outline, badge style of §7.5), so the user sees which stops use the dynamic budget.
+- **Add profitable stops** (§6.7), the last section, collapsed by default:
   - Toggle `ADD PROFITABLE STOPS` plus the four settings (steppers per gap, total, per planetary group; detour as stepper or slider in 10 % steps), with their defaults from §6.7. Disabled with a one-line reason when the route has fewer than 2 stops, prices are not loaded, or the map can't be loaded; "map from 4.10.2" when the map is older than LIVE.
   - When on, suggestions appear **inline in the stop list**, in the gap where they belong, as visually distinct rows (dashed `--amber-dim` border, label `SUGGESTED`), each with the terminal display (§7.4), its role (`buy Quartz → #5`, `sell Waste`), an **Add** button and a **✕** (dismiss) button. Suggested rows have no number, drag handle or reorder buttons.
-  - A summary above the list: `+2 stops · route profit 120,000 → 165,000 (+45,000) · distance 40.1 → 52.0 Gm (+30 %)` and an `ADD ALL` button.
-  - **Add** inserts the stop as a normal (fixed) stop at its position; **Add all** inserts all of them. Either changes the route, so suggestions recompute, and trip progress resets as for every route edit (§7.6).
+  - Inside this section, below the settings: the budget (`dynamic stops 1 / 4 used`), the summary `+2 stops · route profit 120,000 → 165,000 (+45,000) · distance 40.1 → 52.0 Gm (+30 %)` and the `ADD ALL` button. Nothing of this sits above the stop list any more.
+  - **Add** inserts the stop at its position as a `dynamic` stop; **Add all** inserts all of them as `dynamic`. Either changes the route, so suggestions recompute with the accepted stops counted (§6.7), and trip progress resets as for every route edit (§7.6).
   - **✕** excludes that terminal from suggestions until the route is cleared; dismissals are UI state and are not persisted.
   - States: "searching…" while a worker computation runs; "No profitable stops within a 150 % detour" when nothing qualifies; "best found" when the time budget was hit (§6.7).
 - A sticky bottom button "CALCULATE TRADES →" switches to TRADES (calculation is also live/automatic whenever inputs change). It is horizontally centered in the content column at every width (§7.2): full column width below 600 px, otherwise max-width 480 px with `margin-inline: auto`.
@@ -597,6 +610,11 @@ These values are a starting point. Tune them in the browser to match the warm-wh
   - **Buy and sell price per SCU**, always visible without expanding: `BUY 2,810 → SELL 3,315 /SCU`. Labels in `--amber-dim`, values in `--amber`, tabular numerals.
   - **Profit** for the full load (`--amber-bright`, right-aligned) and ROI %.
   - **Skip lines only** — a fourth row, full width, 13 px mono, compares the line with trading via the skipped stops (§6.6): `▲ 1,000 more than #1 → #2 → #3` in `--amber`, `▼ 460 less than #4 → #5` in `--warn`, or `= same as #1 → #2`. The stops are those of the **comparison chain's trades** (1-based), not the skipped stops: consecutive legs form one path, gaps (segments that carry nothing) separate paths with `, ` (`#2 → #3, #4 → #5`). For a haul #2 → #5 whose best chain is only Quartz #4 → #5, the row reads `… than #4 → #5`. If no skipped stop has a profitable trade: `▲ 12,000 more · no trades via #2–#3` (here the skipped stops, a range when several).
+  - **Worse skip lines** (`delta < 0`, the `▼ … less than …` case) are shown **compact and dimmed** instead of the full layout above:
+    - One row (it may wrap to two on narrow screens): commodity name, `→ #5 Seraphim`, profit with `aUEC`, and the verdict `▼ 360,960 less than #4 → #5`, followed by the Details button. Box sizes, buy/sell prices, ROI and badges are left out of the collapsed row (they stay in the details).
+    - Dimmed: text in `--amber-dim` (the verdict keeps a muted `--warn`), no profit emphasis (`--amber` instead of `--amber-bright`, normal size), card at ~70 % opacity; still ≥ 44 px tall and fully readable (dimmed, not disabled).
+    - The full layout returns while the line's details are open, and when the line is marked as bought (§7.6) — the player chose it on purpose.
+    - Ranking and filtering are unchanged; equal (`= same as …`) and better (`▲`) skip lines keep the normal layout.
   - Example layout at 360 px (illustrative values):
 
     ```
@@ -725,7 +743,8 @@ interface BoughtLine {
     - Trip progress survives a page reload and resets when the route is edited.
 15. The header's full screen button enters and leaves full screen. Its icon and label follow the real state, including leaving with Esc. It is absent where the Fullscreen API is unavailable. Unit-tested with a mocked Fullscreen API: supported, unsupported, and rejected request.
 16. Every skip line shows, without expanding, how much more or less it earns than the best chain of trades via the skipped stops (§6.6); the expanded line lists that chain's legs and the difference. Lines without skips show no comparison.
-17. Add profitable stops (§6.7, §7.4): with the option on, ROUTE suggests dynamic stops only when they raise the route profit; every suggestion respects the per-gap, total, per-planetary-group and detour limits, the forward rule (backtracking only inside a planetary group), contains no city terminal and no star system the fixed stops don't use; a dynamic stop may serve a trade that spans a fixed stop (buy at X before B, sell at Y after B). Add / Add all / ✕ work as specified, the UI stays responsive while searching, and the map file is fetched at most once per game version. No UEX request is added.
+17. Add profitable stops (§6.7, §7.4): with the option on, ROUTE suggests dynamic stops only when they raise the route profit; every suggestion respects the per-gap, total, per-planetary-group and detour limits, the forward rule (backtracking only inside a planetary group), contains no city terminal and no star system the fixed stops don't use; a dynamic stop may serve a trade that spans a fixed stop (buy at X before B, sell at Y after B). Add / Add all / ✕ work as specified, the UI stays responsive while searching, and the map file is fetched at most once per game version. No UEX request is added. Accepted stops are marked `DYNAMIC`, keep counting towards all limits after the recompute (with defaults, accepting the suggested stops never leads to more than 4 dynamic stops in total or more than 1 per gap), and the ROUTE sections appear in the order of §7.4.
+18. Skip lines that earn less than their stopover chain are one compact, dimmed row (commodity, sell stop, profit, verdict, Details) and show the full layout again when expanded or marked as bought.
 
 ### 8.1 Required unit tests (minimum)
 
@@ -734,7 +753,8 @@ interface BoughtLine {
 - Candidate generation: excludes raw, non-positive margin, empty box sets; inventory statuses only set warning flags (never exclude or cap).
 - Box range: `{min 4, max 16}` with buy sizes `1,2,4,8,16,24,32` → B = {4,8,16}; buy sizes `1,2` with min 4 → dropped as `boxTooSmall`; sell row sizes narrow B; 46 SCU with B = {4,8,16} → 44 SCU, 2 unused.
 - Stopover comparison (§6.6): A→C vs. A→B + B→C with different commodities; a longer skip whose best chain contains a skip leg; negative delta; empty chain (profit 0, no legs); hauls without skips stay `null`.
-- Profitable stops (§6.7), with a small hand-written map fixture (nodes, groups, `travel`): suggestion only when `P` grows; detour limit at exactly `p` (allowed) and just above (rejected); forward rule rejects moving away from B across groups but allows planet → moon → station inside one group; per-group limit (two candidates on the same moon/planet group → one); per-gap and total limits and the 10-stop cap; city terminals and other-system terminals never suggested; a chain that buys at X before fixed B and sells at Y after B; unused dynamic stops dropped; deterministic tie-breaks; terminals without a map node.
+- Profitable stops (§6.7), with a small hand-written map fixture (nodes, groups, `travel`): suggestion only when `P` grows; detour limit at exactly `p` (allowed) and just above (rejected); forward rule rejects moving away from B across groups but allows planet → moon → station inside one group; per-group limit (two candidates on the same moon/planet group → one); per-gap and total limits and the 10-stop cap; city terminals and other-system terminals never suggested; a chain that buys at X before fixed B and sells at Y after B; unused dynamic stops dropped; deterministic tie-breaks; terminals without a map node; accepted dynamic stops count towards the per-gap, total and per-group limits and towards detour/forward of their gap, are never moved or removed by the search, and a recompute after Add / Add all with default options suggests nothing more in a full gap; stop origin survives reorder/reverse/remove and the persisted-state migration (old routes → all `fixed`).
+- Worse skip lines (§7.5): compact dimmed row; full layout when expanded or bought; better/equal lines unchanged.
 - Terminal map loading (§5.4): LIVE version file, fallback to the newest older version, `schemaVersion` mismatch rejected, cached per version (mock `fetch`).
 - Per-stop grouping: lines grouped by buy stop, one line per (commodity, sell stop), last stop empty, all four sort orders descending with the specified tie-break.
 - Terminal secondary line: the examples table in §7.4.
