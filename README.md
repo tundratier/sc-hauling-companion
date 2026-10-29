@@ -34,6 +34,13 @@ docker compose run --rm test npm run test -- --run --coverage   # coverage repor
 docker compose run --rm dev npm run format                      # prettier
 ```
 
+Terminal map compiler (design in [`docs/terminal-map.md`](docs/terminal-map.md); Python in its own
+image, never touches the host; phase 1 can only list the planned requests):
+
+```bash
+docker compose run --rm terminal-map --dry-run   # node list and number of distance calls
+```
+
 ## Deployment
 
 Every push to `master` (i.e. every git flow release or hotfix) runs
