@@ -123,7 +123,7 @@ A **group** is a planet node with its moons and stations (stations are assigned 
 |---|---|---|
 | entry → entry (any group) | yes | `d` |
 | planet ↔ its own moons/stations | yes | `d` |
-| member ↔ member of the same group | yes (assumed, not stated; §6 Q1) | `d` |
+| member ↔ member of the same group | yes (confirmed; §6 Q1) | `d` |
 | any member → entry outside its group | yes ("the system can be left from any location") | `d` |
 | entry or member of another group → member | **no** — arrive at the planet first | via the planet |
 | gateway ↔ its partner gateway in the other system | yes | **70 Gm** (constant) |
@@ -260,7 +260,7 @@ Nodes of one orbit have no distance between them (`data: false`) and identical d
 
 Answered by the probe: orbit-derived (yes), symmetric (yes), `orbits_distances` complete for our nodes (yes), terminal independence and straight-line vs travel (moot by decision 1).
 
-1. **Please confirm the travel rules (§2.5):** (a) member ↔ member inside one group is direct (the rule only says planet → members); (b) "the system can be left from any location" is read as "from any member you can go straight to a planet or gateway of another group" (planetary system, not star system; the graph handles both the same way); (c) the 0.15 Gm spread also covers stations that sit on their planet's orbit, not only moons.
+1. **Travel rules (§2.5): confirmed by the product owner, all three readings.** (a) member ↔ member inside one group is direct (the rule only says planet → members); (b) "the system can be left from any location" is read as "from any member you can go straight to a planet or gateway of another group" (planetary system, not star system; the graph handles both the same way); (c) the 0.15 Gm spread also covers stations that sit on their planet's orbit, not only moons.
 2. **Age of the data:** the orbit rows were reported in game versions 3.24 – 4.10.2 (most 4.3.2 – 4.7.1). If a body moved, old rows are wrong; the compiler reports the oldest version per system and cannot fix it.
 3. **Future coverage:** Pyro's table covers only 716 of 903 orbit pairs today (all pairs between our node orbits, but new stations will have gaps); §3.2 lists the fallbacks. In 4.10.2 one pair is unusable: Pyro IV ↔ Pyro V is reported as **0 Gm** (game version 4.7), which cannot be right for two planets. The compiler treats 0 Gm between different orbits as missing, fits the pair from the other 15 distances and lists it in `estimated` (Pyro `estimatedPairs: 1`).
 4. **Jump cost** is the constant 70 Gm (`generator.jumpCost`).
