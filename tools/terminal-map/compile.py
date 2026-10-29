@@ -2,8 +2,8 @@
 
 Builds the node list (one node per planet / moon / space station, see docs/terminal-map.md)
 from the UEX metadata endpoints and prints the distance requests a compilation would need.
-Only metadata endpoints are ever requested. The distance endpoints are blocked in
-`uex_get`; phase 2 lifts that guard.
+Only metadata endpoints are requested, plus the fixed 8-request `--probe` list. The distance
+endpoints are blocked in `uex_get`.
 
 Usage (Docker only, see docker-compose.yml):
     docker compose run --rm terminal-map --dry-run
@@ -50,6 +50,47 @@ def uex_get(path: str):
         raise RuntimeError(f"{path}: {body.get('status')} {body.get('message')}")
     time.sleep(REQUEST_SPACING_S)
     return body["data"]
+
+
+# The only distance requests this tool can make so far (docs/terminal-map.md §7): a fixed list.
+PROBE_REQUESTS = (
+    "orbits_distances?id_star_system_origin=68&id_star_system_destination=68",
+    "orbits_distances?id_star_system_origin=64&id_star_system_destination=64",
+    "orbits_distances?id_star_system_origin=55&id_star_system_destination=55",
+    "terminals_distances?id_terminal_origin=18&id_terminal_destination=12",  # Lorville -> Area18
+    "terminals_distances?id_terminal_origin=12&id_terminal_destination=18",  # Area18 -> Lorville
+    "terminals_distances?id_terminal_origin=18&id_terminal_destination=28",  # Lorville -> Aberdeen
+    "terminals_distances?id_terminal_origin=28&id_terminal_destination=12",  # Aberdeen -> Area18
+    "terminals_distances?id_terminal_origin=25&id_terminal_destination=12",  # Everus Harbor -> Area18
+)
+
+
+RAW_DIR = Path(__file__).parent / "raw"  # raw distance responses: committed, the compiler's input
+
+
+def probe() -> int:
+    """Run the fixed probe list once; raw envelopes go to raw/<version>/probe.jsonl."""
+    version = uex_get("game_versions")["live"]
+    out = RAW_DIR / version / "probe.jsonl"
+    if out.exists():
+        print(f"{out} exists: the probe already ran, not repeating it")
+        return 1
+    out.parent.mkdir(parents=True, exist_ok=True)
+    lines = []
+    for path in PROBE_REQUESTS:
+        request = urllib.request.Request(
+            BASE_URL + path, headers={"Accept": "application/json", "User-Agent": USER_AGENT}
+        )
+        with urllib.request.urlopen(request, timeout=30) as response:
+            body = json.load(response)
+        lines.append(json.dumps({"request": path, "response": body}, sort_keys=True, separators=(",", ":")))
+        data = body.get("data")
+        size = len(data) if isinstance(data, list) else 1
+        print(f"{path}\n  status={body.get('status')} http={body.get('http_code')} records={size}")
+        time.sleep(REQUEST_SPACING_S)
+    out.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print(f"raw responses written to {out}")
+    return 0
 
 
 def load_metadata(cache_dir: Path) -> tuple[str, dict[str, list[dict]]]:
@@ -229,14 +270,17 @@ def plan_requests(system_nodes: list[dict], scheme: str, gateways: set[str]) -> 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument("--dry-run", action="store_true", help="print the node list and request plan only")
+    parser.add_argument("--probe", action="store_true", help="send the 8 fixed probe requests (once)")
     parser.add_argument("--cache-dir", type=Path, default=Path(__file__).parent / "cache")
     parser.add_argument("--types", default="", help="comma separated terminal types, default: all")
     parser.add_argument("--rate", type=int, default=90, help="planned requests per minute (limit 120)")
     parser.add_argument("--scheme", choices=SCHEMES, default="routing", help="scheme --plan-out writes")
     parser.add_argument("--plan-out", type=Path, help="write the request list (JSON lines) here")
     args = parser.parse_args()
+    if args.probe:
+        return probe()
     if not args.dry_run:
-        print("Phase 1 only supports --dry-run: no distance endpoint is called.", file=sys.stderr)
+        print("Only --dry-run and --probe (8 fixed requests) are supported so far.", file=sys.stderr)
         return 2
 
     types = {t for t in args.types.split(",") if t} or None
