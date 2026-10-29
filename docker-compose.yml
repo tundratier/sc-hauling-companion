@@ -33,5 +33,14 @@ services:
     ports:
       - '8080:8080'
 
+  # Terminal map compiler (docs/terminal-map.md). Phase 1: only `--dry-run`, no distance calls.
+  terminal-map:
+    build:
+      context: .
+      dockerfile: tools/terminal-map/Dockerfile
+    image: sc-hauling-companion-terminal-map
+    volumes:
+      - .:/work
+
 volumes:
   node_modules:
