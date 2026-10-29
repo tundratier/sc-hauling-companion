@@ -16,8 +16,9 @@ import numpy as np
 
 import mds
 from nodes import build, load_snapshot
+from travel import CO_ORBIT_COST, travel_matrix
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 WEIGHTING = "1/d"
 JUMP_COST = 70.0  # Gm, constant (product owner decision)
 CO_ORBIT_SPREAD = 0.15  # Gm
@@ -149,6 +150,7 @@ def compile_data(raw_dir: Path, version: str, weighting: str = WEIGHTING) -> dic
         by_system[node["system"]].append(node)
 
     out_systems, out_nodes = [], []
+    orbit_cost: dict[int, tuple[dict[int, int], np.ndarray]] = {}
     coords: dict[int, list[tuple[str, float, float]]] = {}
     for sid in sorted(by_system):
         members = by_system[sid]
@@ -156,6 +158,12 @@ def compile_data(raw_dir: Path, version: str, weighting: str = WEIGHTING) -> dic
         d, known, used_versions = system_matrix(orbits, rows)
         points, share = mds.embed(d, known, weighting)
         orbit_point = {o: (float(points[i, 0]), float(points[i, 1])) for i, o in enumerate(orbits)}
+        # reported distance, or the distance of the fitted points where none is usable
+        fitted = np.linalg.norm(points[:, None, :] - points[None, :, :], axis=2)
+        orbit_cost[sid] = (
+            {o: i for i, o in enumerate(orbits)},
+            np.where(known, d, fitted),
+        )
         placed = spread_co_orbit(members, orbit_point)
         coords[sid] = [(nid, x, y) for nid, (x, y, _) in placed.items()]
         pairs = len(orbits) * (len(orbits) - 1) // 2
@@ -166,10 +174,9 @@ def compile_data(raw_dir: Path, version: str, weighting: str = WEIGHTING) -> dic
                 "id": sid,
                 "name": systems[sid]["name"],
                 "orbitIds": orbits,
-                "distances": [
-                    [i, j, _r(d[i, j])] for i in range(len(orbits)) for j in range(i + 1, len(orbits)) if known[i, j]
-                ],
-                # pairs without a usable report: the distance of the fitted points (flagged, not data)
+                # pairs without a usable report: the distance of the fitted points (flagged, not data);
+                # the reported distances are not repeated here, they are the committed raw input
+                # (indices into orbitIds)
                 "estimated": [
                     [i, j, _r(math.dist(points[i], points[j]))]
                     for i in range(len(orbits))
@@ -211,9 +218,17 @@ def compile_data(raw_dir: Path, version: str, weighting: str = WEIGHTING) -> dic
     for system in out_systems:
         system["layout"] = layout[system["id"]]
     order = {n["id"]: i for i, n in enumerate(out_nodes)}
+    for node in out_nodes:
+        node["index"] = order[node["id"]]
     for jump in jumps:
         if order[jump["a"]] > order[jump["b"]]:
             jump["a"], jump["b"] = jump["b"], jump["a"]
+
+    def orbit_distance(system: int, a: int, b: int) -> float:
+        position, matrix = orbit_cost[system]
+        return float(matrix[position[a], position[b]])
+
+    travel = travel_matrix(out_nodes, jumps, orbit_distance)
 
     return {
         "schemaVersion": SCHEMA_VERSION,
@@ -225,13 +240,27 @@ def compile_data(raw_dir: Path, version: str, weighting: str = WEIGHTING) -> dic
             "maxIterations": mds.MAX_ITERATIONS,
             "jumpCost": JUMP_COST,
             "coOrbitSpread": CO_ORBIT_SPREAD,
+            "coOrbitCost": CO_ORBIT_COST,
             "panelGap": PANEL_GAP,
         },
         "systems": out_systems,
         "nodes": out_nodes,
         "jumps": sorted(jumps, key=lambda j: (order[j["a"]], order[j["b"]])),
         "terminalNode": {str(t): n["id"] for n in out_nodes for t in n["terminalIds"]},
+        "travel": travel,
     }
+
+
+def compiled_versions(out_dir: Path) -> list[str]:
+    """Game versions that have a compiled file in `out_dir`, oldest first."""
+    found = [p.stem for p in out_dir.glob("*.json") if p.stem != "index"] if out_dir.is_dir() else []
+    return sorted(found, key=_version_key)
+
+
+def index_text(versions: list[str]) -> str:
+    """`index.json`: which versions are compiled, so a client need not guess file names."""
+    body = {"schemaVersion": SCHEMA_VERSION, "versions": sorted(versions, key=_version_key)}
+    return json.dumps(body, sort_keys=True, separators=(",", ":")) + "\n"
 
 
 def compile_version(raw_dir: Path, version: str) -> str:

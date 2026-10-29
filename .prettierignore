@@ -5,5 +5,5 @@ package-lock.json
 CHANGELOG.md
 docs
 src/__fixtures__
-src/data/terminalMap/*.json
+public/terminal-map/*.json
 tools/terminal-map/raw

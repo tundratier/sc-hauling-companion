@@ -198,22 +198,26 @@ Same input → byte-identical output:
 
 ### 5.1 File and import
 
-`src/data/terminalMap/<gameVersion>.json` (e.g. `4.10.2.json`) plus an `index.ts` that maps version → lazy `import()`. The app looks up the LIVE version (the `GameVersions` the cache layer already holds) and falls back to the newest older file, marking the map "from 4.10.2". The data is static per version, so it needs no TTL, only the `schemaVersion` check the caches already have. Size ≈ 30 KB.
+Two static files, **not bundled**, served from `public/terminal-map/` and fetched at runtime (`import.meta.env.BASE_URL + 'terminal-map/…'`):
+
+- `public/terminal-map/<gameVersion>.json` (e.g. `4.10.2.json`, ≈ 62 KB): the map of §5.2.
+- `public/terminal-map/index.json`: `{"schemaVersion":2,"versions":["4.10.2"]}`, the compiled versions oldest first, so the app picks the LIVE version or the newest older one (marking the map "from 4.10.2") without guessing file names. `--compile` rewrites it from the files present, `--check` verifies it.
+
+The data is static per version, so it needs no TTL, only a `schemaVersion` check (now 2; changes of the shape bump it). The shape is the contract in `src/domain/terminalMap.ts` (types only, no runtime code); the app must not reimplement the travel rules or the shortest paths, it reads `travel`.
 
 ### 5.2 Shape
 
 ```jsonc
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "gameVersion": "4.10.2",
   "units": "Gm",
   "generator": { "source": "orbits_distances", "weights": "1/d", "maxIterations": 500,
-                 "jumpCost": 70, "coOrbitSpread": 0.15, "panelGap": 20 },
+                 "jumpCost": 70, "coOrbitSpread": 0.15, "coOrbitCost": 0.15, "panelGap": 20 },
   "systems": [
     {
       "id": 68, "name": "Stanton",
-      "orbitIds": [4, 59, 116, 190, 326],                       // matrix order
-      "distances": [ [0, 1, 42], [0, 2, 23] ],                   // [i, j, Gm] i < j over orbitIds, as reported
+      "orbitIds": [4, 59, 116, 190, 326],                       // order the indices of `estimated` refer to
       "estimated": [],                                           // [i, j, Gm] pairs without a usable report: distance of the fitted points, flagged
       "layout": { "cx": 0.0, "cy": 0.0, "rotationDeg": 0.0 },   // panel in the combined map (§5.4)
       "quality": { "stress1": 0.0083, "meanRelError": 0.0098, "maxRelError": 0.3108, "planarShare": 0.9728,
@@ -222,8 +226,9 @@ Same input → byte-identical output:
   ],
   "nodes": [
     {
+      "index": 12,                        // position in `nodes` = row and column in `travel`
       "id": "planet:116", "system": 68, "kind": "planet", "name": "Hurston", "orbitId": 116,
-      "group": "planet:116",              // parent planet node, null for standalone nodes (gateways, Nyx stations, Delamar)
+      "group": "planet:116",              // parent planet node, null for standalone nodes (gateways, Nyx stations, Delamar): a group of one
       "terminalIds": [18, 30, 31],
       "hasCommodityTerminal": true,
       "x": 12.345, "y": -3.21,           // system-local, Gm
@@ -231,11 +236,14 @@ Same input → byte-identical output:
     }
   ],
   "jumps": [ { "a": "station:24", "b": "station:50", "cost": 70, "jumpPointIds": [1, 2] } ],
-  "terminalNode": { "18": "planet:116" } // terminal id → node id, covers every terminal in scope
+  "terminalNode": { "18": "planet:116" }, // terminal id → node id; a terminal not listed has no node (2 in 4.10.2 have no location)
+  "travel": [0, 23.15, 41.0, null /* … */] // N × N, row-major, `travel[from.index * N + to.index]` in Gm, N = nodes.length
 }
 ```
 
-`kind` is `planet | moon | station | orbit`. Coordinates are system-local and metric. The combined-map position of a node is `layout.c + R(layout.rotationDeg) · (x, y)`. `distances` holds the raw measured orbit distances (≈ 457 triples), so routing never depends on the fitted coordinates.
+`kind` is `planet | moon | station | orbit`. Coordinates are system-local and metric. The combined-map position of a node is `layout.c + R(layout.rotationDeg) · (x, y)`. The reported orbit distances are not repeated in the file (they are the committed raw input), only the `estimated` pairs that had to be fitted.
+
+**`travel`** is the directed shortest travel distance of §5.4 for every ordered pair of nodes: 3 decimals, `0` on the diagonal (and for two terminals of one node), `null` where unreachable (none in 4.10.2). It is **not symmetric** (entering a group needs its planet, leaving does not). A planetary group is `node.group ?? node.id`; a terminal's star system is `nodes[terminalNode[id]].system`.
 
 ### 5.3 Co-orbit spread (needed: confirmed by the probe)
 
@@ -243,8 +251,8 @@ Nodes of one orbit have no distance between them (`data: false`) and identical d
 
 ### 5.4 Distances, routes and drawing
 
-- **Distance between two nodes of a system** (travel graph, §2.5): Dijkstra over the directed edges built from `distances` and the 0.15 Gm co-orbit rule. Two terminals on one node: 0. 71 nodes make this instant, so no all-pairs table is stored.
-- **Distance across systems:** the same Dijkstra over all systems, with the `jumps` edges (cost 70) between gateway nodes. In the triangle the shorter of the direct and the via-third-system path wins.
+- **Distance between two nodes of a system** (travel graph, §2.5): the compiler (`travel.py`) builds the directed edges of the §2.5 table, weighted with the reported orbit distance (the distance of the fitted points where none is usable) or 0.15 Gm for two nodes of one orbit, and solves all pairs with Floyd-Warshall (float64, only `min` and `+`, so the result is deterministic). Two terminals on one node: 0. The result is stored as `travel` (71² = 5,041 numbers); the app only looks it up.
+- **Distance across systems:** the same solve over all systems, with the `jumps` edges (cost 70) between gateway nodes. In the triangle the shorter of the direct and the via-third-system path wins.
 - **Straight-line estimate** between any two nodes of a system, when only the map is available: `‖p − q‖` of the system-local coordinates.
 - **Drawing:** one panel per system, placed on fixed positions in system-id order on a circle (radius = sum of the two largest panel radii + a gap), each rotated by the closed-form angle that best points its gateways at the panels they lead to. Jump edges are straight lines between gateway nodes. Systems are not co-located in reality, so this layout is schematic by design; it is stored in `layout`, separate from the metric coordinates.
 
@@ -252,7 +260,8 @@ Nodes of one orbit have no distance between them (`data: false`) and identical d
 
 | Use | Data |
 |---|---|
-| Distance between two terminals | `terminalNode` → two nodes → Dijkstra over `distances` + `jumps` (§5.4). Same node → 0. |
+| Distance between two terminals | `terminalNode` → two nodes → `travel[a.index * N + b.index]` (§5.4). Same node → 0. |
+| Same planetary group / star system | `node.group ?? node.id`; `node.system`. |
 | Terminals along a route | route legs as segments in the system plane: nodes whose point-to-segment distance ≤ ε, expanded to `terminalIds`. Needs only `x`, `y`. |
 | 2D drawing | `layout` + `x`, `y` + `jumps` + per-system `quality` as a confidence hint. |
 
@@ -272,7 +281,7 @@ Answered by the probe: orbit-derived (yes), symmetric (yes), `orbits_distances` 
 
 The probe of 8 calls ran once on 2026-10-29 (`compile.py --probe`: a fixed list that refuses to run twice and the only distance requests the tool can make). Its results are §1.1 and §1.2.
 
-The compiler (phase 2) reads the committed raw files and makes **no API calls**. Result for 4.10.2, `src/data/terminalMap/4.10.2.json` (37 KB):
+The compiler (phase 2) reads the committed raw files and makes **no API calls**. Result for 4.10.2, `public/terminal-map/4.10.2.json` (62 KB, of which `travel` is about 35 KB):
 
 | System | Nodes | Orbit points | Reported pairs | Estimated | stress-1 | Mean rel. error | Planar share | Row versions |
 |---|---:|---:|---:|---:|---:|---:|---:|---|
@@ -282,13 +291,13 @@ The compiler (phase 2) reads the committed raw files and makes **no API calls**.
 
 The systems are almost exactly planar (97–99 % of the variance in two dimensions), so the 2D map reproduces the reported distances to about 1 %. The largest single error (Stanton 31 %) is a 1 Gm pair (Ita ↔ the HUR Lagrange stations, 0.3 Gm off), where the 1 Gm rounding of the source dominates. Combined layout: the three panel centres sit on a circle at −90° (Nyx), 30° (Pyro) and 150° (Stanton), each panel rotated towards the panels its gateways lead to.
 
-The app side is only the data access: `src/data/terminalMap/types.ts` (the shape of §5.2) and `index.ts` (`loadTerminalMap(gameVersion)`: exact version, else the newest older map with `exact: false`, else null). Nothing uses it yet; the feature stays on its branch until the main app does.
+The app side is the contract `src/domain/terminalMap.ts` (types of §5.2, no runtime code); the loader (fetch `index.json`, pick the LIVE version or the newest older one, then fetch that file) lives in the app.
 
 ## 8. Tooling in this repo
 
 ```bash
-docker compose run --rm terminal-map --compile                       # raw/<newest version>/ -> src/data/terminalMap/<version>.json (offline)
-docker compose run --rm terminal-map --check                         # fail if the committed file differs from a fresh compile (offline)
+docker compose run --rm terminal-map --compile                       # raw/<newest version>/ -> public/terminal-map/<version>.json + index.json (offline)
+docker compose run --rm terminal-map --check                         # fail if either committed file differs from a fresh compile (offline)
 docker compose run --rm terminal-map-test                            # Python tests (MDS, frame, ring, whole-map checks, determinism)
 docker compose run --rm terminal-map --dry-run                       # nodes, groups, request counts of the (old) terminal-pair schemes
 docker compose run --rm terminal-map --snapshot --game-version 4.11  # trimmed metadata -> raw/4.11/metadata.json (8 metadata requests)
@@ -296,7 +305,7 @@ docker compose run --rm terminal-map --fetch --game-version 4.11     # prints th
 docker compose run --rm terminal-map --fetch --confirm --game-version 4.11  # makes them -> raw/4.11/orbits_distances.jsonl (once)
 ```
 
-Files in `tools/terminal-map/`: `compile.py` (CLI, guarded UEX access, probe), `fetch.py` (the `orbits_distances` fetch step), `nodes.py` (metadata snapshot, nodes, groups, jump edges), `mapbuild.py` (distance rows, per-system fit, co-orbit spread, layout, output), `mds.py` (classical MDS, weighted SMACOF, canonical frame), `test_terminal_map.py`, `raw/<version>/` (committed input: `metadata.json`, `probe.jsonl` with the `orbits_distances` rows), `cache/` (git-ignored scratch). `uex_get` refuses `terminals_distances` / `orbits_distances`; only `probe()` (fixed list) and `fetch.py` (one `orbits_distances` call per star system, only with `--confirm`) may call them.
+Files in `tools/terminal-map/`: `compile.py` (CLI, guarded UEX access, probe), `fetch.py` (the `orbits_distances` fetch step), `nodes.py` (metadata snapshot, nodes, groups, jump edges), `mapbuild.py` (distance rows, per-system fit, co-orbit spread, layout, output, index), `travel.py` (travel graph and all-pairs distances), `mds.py` (classical MDS, weighted SMACOF, canonical frame), `test_terminal_map.py`, `raw/<version>/` (committed input: `metadata.json`, `probe.jsonl` with the `orbits_distances` rows), `cache/` (git-ignored scratch). `uex_get` refuses `terminals_distances` / `orbits_distances`; only `probe()` (fixed list) and `fetch.py` (one `orbits_distances` call per star system, only with `--confirm`) may call them.
 
 **For a new game version** (needs the product owner's go-ahead for the 3 distance calls): `--snapshot`, `--fetch` to see the plan, `--fetch --confirm` (stores the raw envelopes once; nothing is written if a call fails; it reports node-orbit pairs without a distance), `--compile`, review `estimated` and `oldestRowVersion`, commit raw and output together. 4.10.2 has no `orbits_distances.jsonl`: its rows are in `probe.jsonl`.
 

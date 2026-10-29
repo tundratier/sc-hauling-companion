@@ -1,7 +1,7 @@
 """Terminal map compiler (docs/terminal-map.md).
 
-    --compile   build src/data/terminalMap/<version>.json from the committed raw files (offline)
-    --check     recompile and fail if the committed file differs (determinism check, offline)
+    --compile   build public/terminal-map/<version>.json and index.json from the committed raw files (offline)
+    --check     recompile and fail if the committed files differ (determinism check, offline)
     --snapshot  store the trimmed metadata of a game version in raw/<version>/metadata.json
     --fetch     plan the 3 orbits_distances calls of a game version; with --confirm make them
     --dry-run   print the node list and the distance-request plans of the (older) pair schemes
@@ -66,7 +66,7 @@ PROBE_REQUESTS = (
 
 
 RAW_DIR = Path(__file__).parent / "raw"  # raw responses + metadata snapshot: committed, the input
-OUT_DIR = Path(__file__).resolve().parents[2] / "src" / "data" / "terminalMap"
+OUT_DIR = Path(__file__).resolve().parents[2] / "public" / "terminal-map"  # served as static files
 
 
 def newest_version() -> str:
@@ -219,13 +219,20 @@ def main() -> int:
         version = args.game_version or newest_version()
         text = mapbuild.compile_version(RAW_DIR, version)
         target = args.out_dir / f"{version}.json"
+        index = args.out_dir / "index.json"
         if args.check:
             same = target.exists() and target.read_text(encoding="utf-8", newline="") == text
+            listed = mapbuild.index_text(mapbuild.compiled_versions(args.out_dir))
+            same_index = index.exists() and index.read_text(encoding="utf-8", newline="") == listed
             print(f"{target}: {'identical' if same else 'DIFFERS from a fresh compile'}")
-            return 0 if same else 1
+            print(f"{index}: {'identical' if same_index else 'DIFFERS from the compiled files'}")
+            return 0 if same and same_index else 1
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(text, encoding="utf-8", newline="")
         print(f"wrote {target} ({len(text)} bytes)")
+        listed = mapbuild.index_text(mapbuild.compiled_versions(args.out_dir))
+        index.write_text(listed, encoding="utf-8", newline="")
+        print(f"wrote {index} ({len(listed)} bytes)")
         return 0
     if not args.dry_run:
         parser.print_usage(sys.stderr)

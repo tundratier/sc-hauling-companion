@@ -20,7 +20,8 @@ import nodes
 
 HERE = Path(__file__).resolve().parent
 RAW = HERE / "raw"
-COMMITTED = HERE.parents[1] / "src" / "data" / "terminalMap" / "4.10.2.json"
+OUT_DIR = HERE.parents[1] / "public" / "terminal-map"
+COMMITTED = OUT_DIR / "4.10.2.json"
 VERSION = "4.10.2"
 
 POINTS = np.array([[0.0, 0.0], [10.0, 0.0], [3.0, 7.0], [-4.0, 5.0], [8.0, -6.0], [-7.0, -3.0]])
@@ -173,6 +174,49 @@ class CompiledMapTests(unittest.TestCase):
             for b in ids[i + 1 :]:
                 gap = math.hypot(layout[a]["cx"] - layout[b]["cx"], layout[a]["cy"] - layout[b]["cy"])
                 self.assertGreater(gap, radius[a] + radius[b])
+
+    def test_index_lists_the_compiled_versions_oldest_first(self):
+        self.assertEqual(mapbuild.index_text(["4.10.2", "4.3.2"]), '{"schemaVersion":2,"versions":["4.3.2","4.10.2"]}\n')
+        self.assertEqual((OUT_DIR / "index.json").read_text(encoding="utf-8", newline=""), mapbuild.index_text(mapbuild.compiled_versions(OUT_DIR)))
+        self.assertIn(VERSION, mapbuild.compiled_versions(OUT_DIR))
+
+    def test_node_index_is_the_position(self):
+        self.assertEqual([n["index"] for n in self.data["nodes"]], list(range(len(self.data["nodes"]))))
+
+    def _travel(self, a: str, b: str) -> float:
+        index = {n["id"]: n["index"] for n in self.data["nodes"]}
+        n = len(self.data["nodes"])
+        return self.data["travel"][index[a] * n + index[b]]
+
+    def test_travel_matrix_shape_and_reachability(self):
+        n = len(self.data["nodes"])
+        travel = self.data["travel"]
+        self.assertEqual(len(travel), n * n)
+        self.assertTrue(all(travel[i * n + i] == 0 for i in range(n)))
+        self.assertNotIn(None, travel)  # every node reaches every node (3 systems form a triangle)
+
+    def test_travel_is_a_shortest_path_metric_but_not_symmetric(self):
+        n = len(self.data["nodes"])
+        t = self.data["travel"]
+        for i in range(n):
+            for j in range(n):
+                for k in range(0, n, 7):
+                    self.assertLessEqual(t[i * n + j], t[i * n + k] + t[k * n + j] + 0.002)
+        self.assertNotEqual(self._travel("planet:4", "moon:1"), self._travel("moon:1", "planet:4"))
+
+    def test_entering_a_group_goes_through_its_planet(self):
+        # ArcCorp -> Aberdeen (a Hurston moon): to Hurston, then 0.15 Gm to the moon
+        self.assertAlmostEqual(
+            self._travel("planet:4", "moon:1"), self._travel("planet:4", "planet:116") + mapbuild.CO_ORBIT_COST, delta=0.002
+        )
+        # leaving works from the moon: same as from Hurston's orbit
+        self.assertAlmostEqual(self._travel("moon:1", "planet:4"), self._travel("planet:116", "planet:4"), delta=0.5)
+        self.assertAlmostEqual(self._travel("planet:116", "moon:1"), mapbuild.CO_ORBIT_COST, delta=0.001)
+
+    def test_a_jump_costs_70_and_joins_the_systems(self):
+        self.assertEqual(self._travel("station:24", "station:50"), 70.0)
+        self.assertEqual(self._travel("station:50", "station:24"), 70.0)
+        self.assertGreater(self._travel("planet:116", "station:57"), 70.0)  # Hurston -> a Nyx gateway: at least one jump
 
     def test_snapshot_has_only_the_listed_fields(self):
         snapshot = nodes.load_snapshot(RAW, VERSION)
