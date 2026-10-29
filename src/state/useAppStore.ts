@@ -3,6 +3,11 @@ import { persist } from 'zustand/middleware'
 import type { Vehicle } from '../domain/types'
 import { STD_BOX_SIZES } from '../domain/types'
 import {
+  DEFAULT_SUGGEST_OPTIONS,
+  normalizeSuggestOptions,
+  type SuggestOptions,
+} from '../route/suggest/types'
+import {
   INITIAL_TRIP,
   complete,
   depart,
@@ -46,6 +51,8 @@ export interface AppState {
   stops: number[]
   /** Trip mode progress (SPEC §7.6); resets whenever the stop list changes. */
   trip: TripState
+  /** "Add profitable stops" options (SPEC §6.7). */
+  suggest: SuggestOptions
 
   setTab: (tab: Tab) => void
   selectVehicle: (vehicle: Vehicle | null) => void
@@ -61,6 +68,11 @@ export interface AppState {
   moveStop: (from: number, to: number) => void
   reverseStops: () => void
   clearStops: () => void
+  /** Insert a terminal as a normal stop at `index` (accepting a suggested stop). */
+  insertStop: (index: number, terminalId: number) => void
+  /** Replace the whole stop list (accepting all suggested stops); at most 10 stops. */
+  replaceStops: (stops: number[]) => void
+  setSuggestOptions: (options: Partial<SuggestOptions>) => void
   toggleBought: (line: BoughtLine) => void
   departStop: () => void
   undoDepart: () => void
@@ -103,6 +115,7 @@ export const useAppStore = create<AppState>()(
       showUnavailableTerminals: false,
       stops: [],
       trip: INITIAL_TRIP,
+      suggest: DEFAULT_SUGGEST_OPTIONS,
 
       setTab: (tab) => set({ tab }),
       selectVehicle: (vehicle) =>
@@ -144,6 +157,15 @@ export const useAppStore = create<AppState>()(
         }),
       reverseStops: () => set((s) => withStops(s, [...s.stops].reverse())),
       clearStops: () => set((s) => withStops(s, [])),
+      insertStop: (index, terminalId) =>
+        set((s) => {
+          if (s.stops.length >= MAX_STOPS) return s
+          const at = Math.min(Math.max(0, index), s.stops.length)
+          return withStops(s, [...s.stops.slice(0, at), terminalId, ...s.stops.slice(at)])
+        }),
+      replaceStops: (stops) => set((s) => (stops.length > MAX_STOPS ? s : withStops(s, stops))),
+      setSuggestOptions: (options) =>
+        set((s) => ({ suggest: normalizeSuggestOptions({ ...s.suggest, ...options }) })),
       toggleBought: (line) => set((s) => ({ trip: toggleBought(s.trip, line) })),
       departStop: () => set((s) => ({ trip: depart(s.trip, s.stops.length) })),
       undoDepart: () => set((s) => ({ trip: undo(s.trip) })),
@@ -165,6 +187,7 @@ export const useAppStore = create<AppState>()(
         showUnavailableTerminals: s.showUnavailableTerminals,
         stops: s.stops,
         trip: s.trip,
+        suggest: s.suggest,
       }),
     },
   ),
