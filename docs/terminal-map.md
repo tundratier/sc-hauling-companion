@@ -292,10 +292,12 @@ docker compose run --rm terminal-map --check                         # fail if t
 docker compose run --rm terminal-map-test                            # Python tests (MDS, frame, ring, whole-map checks, determinism)
 docker compose run --rm terminal-map --dry-run                       # nodes, groups, request counts of the (old) terminal-pair schemes
 docker compose run --rm terminal-map --snapshot --game-version 4.11  # trimmed metadata -> raw/4.11/metadata.json (8 metadata requests)
+docker compose run --rm terminal-map --fetch --game-version 4.11     # prints the 3 orbits_distances calls, sends nothing
+docker compose run --rm terminal-map --fetch --confirm --game-version 4.11  # makes them -> raw/4.11/orbits_distances.jsonl (once)
 ```
 
-Files in `tools/terminal-map/`: `compile.py` (CLI, guarded UEX access, probe), `nodes.py` (metadata snapshot, nodes, groups, jump edges), `mapbuild.py` (distance rows, per-system fit, co-orbit spread, layout, output), `mds.py` (classical MDS, weighted SMACOF, canonical frame), `test_terminal_map.py`, `raw/<version>/` (committed input: `metadata.json`, `probe.jsonl` with the `orbits_distances` rows), `cache/` (git-ignored scratch). `uex_get` refuses `terminals_distances` / `orbits_distances`; only `probe()` may call them, with its fixed list.
+Files in `tools/terminal-map/`: `compile.py` (CLI, guarded UEX access, probe), `fetch.py` (the `orbits_distances` fetch step), `nodes.py` (metadata snapshot, nodes, groups, jump edges), `mapbuild.py` (distance rows, per-system fit, co-orbit spread, layout, output), `mds.py` (classical MDS, weighted SMACOF, canonical frame), `test_terminal_map.py`, `raw/<version>/` (committed input: `metadata.json`, `probe.jsonl` with the `orbits_distances` rows), `cache/` (git-ignored scratch). `uex_get` refuses `terminals_distances` / `orbits_distances`; only `probe()` (fixed list) and `fetch.py` (one `orbits_distances` call per star system, only with `--confirm`) may call them.
 
-**For a new game version** (needs the product owner's go-ahead for the 3 distance calls): `--snapshot`, then fetch the three `orbits_distances` responses into `raw/<version>/` (the fetch step is the one piece not built, since the only version so far is 4.10.2 and its data is in `probe.jsonl`), `--compile`, review `estimated` and `oldestRowVersion`, commit raw and output together.
+**For a new game version** (needs the product owner's go-ahead for the 3 distance calls): `--snapshot`, `--fetch` to see the plan, `--fetch --confirm` (stores the raw envelopes once; nothing is written if a call fails; it reports node-orbit pairs without a distance), `--compile`, review `estimated` and `oldestRowVersion`, commit raw and output together. 4.10.2 has no `orbits_distances.jsonl`: its rows are in `probe.jsonl`.
 
 Under Git Bash prefix `docker compose run` with `MSYS_NO_PATHCONV=1` when passing `/work/...` paths.

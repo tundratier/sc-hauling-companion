@@ -3,6 +3,7 @@
     --compile   build src/data/terminalMap/<version>.json from the committed raw files (offline)
     --check     recompile and fail if the committed file differs (determinism check, offline)
     --snapshot  store the trimmed metadata of a game version in raw/<version>/metadata.json
+    --fetch     plan the 3 orbits_distances calls of a game version; with --confirm make them
     --dry-run   print the node list and the distance-request plans of the (older) pair schemes
     --probe     the 8 fixed probe requests (already run once for 4.10.2)
 
@@ -113,6 +114,27 @@ def probe() -> int:
     print(f"raw responses written to {out}")
     return 0
 
+def fetch_distances(version: str | None, confirm: bool) -> int:
+    """New game version: one orbits_distances call per star system (needs raw/<version>/metadata.json)."""
+    import fetch
+
+    version = version or uex_get("game_versions")["live"]
+    if not (RAW_DIR / version / "metadata.json").exists():
+        print(f"no snapshot for {version}: run --snapshot --game-version {version} first")
+        return 1
+    requests = fetch.plan(RAW_DIR, version)
+    print(f"game version {version}: {len(requests)} calls")
+    for path in requests:
+        print(f"  {path}")
+    if not confirm:
+        print("nothing sent; add --confirm to make these calls")
+        return 0
+    out, gaps = fetch.fetch(RAW_DIR, version)
+    print(f"raw responses written to {out}")
+    for system, count in gaps.items():
+        print(f"  star system {system}: {count} node-orbit pairs without a distance")
+    print(f"next: --compile --game-version {version}")
+    return 0
 
 
 def routing_pairs(ordered: list[dict]) -> list[tuple[dict, dict]]:
@@ -175,6 +197,8 @@ def main() -> int:
     parser.add_argument("--compile", action="store_true", help="write the map data file (offline)")
     parser.add_argument("--check", action="store_true", help="fail if the committed map data differs (offline)")
     parser.add_argument("--snapshot", action="store_true", help="store the trimmed metadata in raw/")
+    parser.add_argument("--fetch", action="store_true", help="plan the orbits_distances calls of a game version")
+    parser.add_argument("--confirm", action="store_true", help="with --fetch: really make the calls (needs a go-ahead)")
     parser.add_argument("--game-version", help="default: the newest version in raw/")
     parser.add_argument("--out-dir", type=Path, default=OUT_DIR, help="where the map data files live")
     parser.add_argument("--cache-dir", type=Path, default=Path(__file__).parent / "cache")
@@ -187,6 +211,8 @@ def main() -> int:
         return probe()
     if args.snapshot:
         return snapshot(args.cache_dir, args.game_version)
+    if args.fetch:
+        return fetch_distances(args.game_version, args.confirm)
     if args.compile or args.check:
         import mapbuild
 

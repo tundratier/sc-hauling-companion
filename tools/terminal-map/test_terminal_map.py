@@ -4,12 +4,16 @@ Run: docker compose run --rm terminal-map-test
 
 from __future__ import annotations
 
+import json
 import math
+import shutil
+import tempfile
 import unittest
 from pathlib import Path
 
 import numpy as np
 
+import fetch
 import mapbuild
 import mds
 import nodes
@@ -174,6 +178,63 @@ class CompiledMapTests(unittest.TestCase):
         snapshot = nodes.load_snapshot(RAW, VERSION)
         for endpoint, records in snapshot.items():
             self.assertEqual(set(records[0]), set(nodes.META_FIELDS[endpoint]), endpoint)
+
+
+class FetchTests(unittest.TestCase):
+    """The fetch step with a fake API: the recorded probe responses."""
+
+    @classmethod
+    def setUpClass(cls):
+        lines = (RAW / VERSION / "probe.jsonl").read_text(encoding="utf-8").splitlines()
+        cls.recorded = {r["request"]: r["response"] for r in map(json.loads, lines)}
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.raw = Path(self.tmp.name)
+        (self.raw / "9.9.9").mkdir()
+        shutil.copy(RAW / VERSION / "metadata.json", self.raw / "9.9.9" / "metadata.json")
+        self.calls: list[str] = []
+
+    def get(self, path: str) -> dict:
+        self.calls.append(path)
+        return self.recorded[path]
+
+    def test_plan_is_one_call_per_star_system(self):
+        self.assertEqual(
+            fetch.plan(self.raw, "9.9.9"),
+            [
+                "orbits_distances?id_star_system_origin=55&id_star_system_destination=55",
+                "orbits_distances?id_star_system_origin=64&id_star_system_destination=64",
+                "orbits_distances?id_star_system_origin=68&id_star_system_destination=68",
+            ],
+        )
+
+    def test_fetch_stores_what_the_compiler_reads_and_reports_no_gaps(self):
+        out, gaps = fetch.fetch(self.raw, "9.9.9", self.get)
+        self.assertEqual(len(self.calls), 3)
+        self.assertEqual(gaps, {55: 0, 64: 0, 68: 0})
+        self.assertTrue(out.read_text(encoding="utf-8").endswith("\n"))
+        self.assertEqual(mapbuild.load_orbit_rows(self.raw, "9.9.9"), mapbuild.load_orbit_rows(RAW, VERSION))
+
+    def test_fetch_refuses_to_run_twice(self):
+        fetch.fetch(self.raw, "9.9.9", self.get)
+        with self.assertRaises(FileExistsError):
+            fetch.fetch(self.raw, "9.9.9", self.get)
+        self.assertEqual(len(self.calls), 3)
+
+    def test_failed_call_writes_nothing(self):
+        def failing(path: str) -> dict:
+            return {"status": "error", "data": None} if "=64&" in path else self.get(path)
+
+        with self.assertRaises(RuntimeError):
+            fetch.fetch(self.raw, "9.9.9", failing)
+        self.assertFalse((self.raw / "9.9.9" / fetch.FILE_NAME).exists())
+
+    def test_gaps_are_counted(self):
+        stanton = self.recorded["orbits_distances?id_star_system_origin=68&id_star_system_destination=68"]
+        thin = {"status": "ok", "data": stanton["data"][:10]}
+        self.assertGreater(fetch.missing_pairs(self.raw, "9.9.9", [thin])[68], 0)
 
 
 if __name__ == "__main__":
