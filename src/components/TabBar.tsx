@@ -24,7 +24,7 @@ export function TabBar({ tab, onChange }: TabBarProps) {
   }
 
   return (
-    <nav className="tabbar" aria-label="Views">
+    <nav className="tabbar" aria-label="Views" data-bottom-overlay>
       <div className="tabbar__inner" role="tablist">
         {TABS.map(({ id, label }, index) => (
           <button

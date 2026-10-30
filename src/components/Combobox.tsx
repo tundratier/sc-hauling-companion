@@ -1,4 +1,47 @@
-import { useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent,
+  type ReactNode,
+} from 'react'
+
+/** Matches `.combobox__list { max-height: min(50vh, 380px) }`. */
+const LIST_MAX = 380
+/** Below this, the list opens on the side with more room instead. */
+const LIST_MIN = 180
+/** List margin (4 px) plus a little air to the edge. */
+const EDGE = 12
+
+interface Fit {
+  side: 'up' | 'down'
+  maxHeight: number
+}
+
+/** Free space below and above `field`, inside the visual viewport and above bottom bars. */
+export function fitList(field: DOMRect, viewTop: number, viewBottom: number, bars: DOMRect[]): Fit {
+  const bottom = Math.min(
+    viewBottom,
+    ...bars.filter((b) => b.top >= field.bottom).map((b) => b.top),
+  )
+  const below = bottom - field.bottom - EDGE
+  const above = field.top - viewTop - EDGE
+  const side = below >= LIST_MIN || below >= above ? 'down' : 'up'
+  const space = side === 'down' ? below : above
+  return { side, maxHeight: Math.max(LIST_MIN / 2, Math.min(LIST_MAX, space)) }
+}
+
+function measure(input: HTMLElement): Fit {
+  const vv = window.visualViewport
+  const viewTop = vv ? vv.offsetTop : 0
+  const viewBottom = vv ? vv.offsetTop + vv.height : window.innerHeight
+  const bars = [...document.querySelectorAll('[data-bottom-overlay]')].map((el) =>
+    el.getBoundingClientRect(),
+  )
+  return fitList(input.getBoundingClientRect(), viewTop, viewBottom, bars)
+}
 
 interface ComboboxProps<T> {
   label: string
@@ -13,8 +56,12 @@ interface ComboboxProps<T> {
   value?: string
   /** Clear the field after a selection and keep focus (for "add stop"). */
   clearOnSelect?: boolean
-  /** Where the list opens; `up` keeps it above the on-screen keyboard. */
-  placement?: 'up' | 'down'
+  /**
+   * Where the list opens. `auto` measures the free space below and above the field (visual
+   * viewport, so the on-screen keyboard counts, minus `[data-bottom-overlay]` bars) and picks the
+   * side that fits.
+   */
+  placement?: 'up' | 'down' | 'auto'
   emptyText?: string
   disabled?: boolean
 }
@@ -29,7 +76,7 @@ export function Combobox<T>({
   onSelect,
   value = '',
   clearOnSelect = false,
-  placement = 'down',
+  placement = 'auto',
   emptyText = 'No matches',
   disabled,
 }: ComboboxProps<T>) {
@@ -45,6 +92,29 @@ export function Combobox<T>({
   const results = open && query.trim() ? search(query) : []
   const showList = open && query.trim() !== ''
   const optionId = (i: number) => `${uid}-opt-${i}`
+
+  // `auto`: re-measure while the list is open (keyboard opening, scrolling, resizing).
+  const [fit, setFit] = useState<Fit | null>(null)
+  useEffect(() => {
+    if (placement !== 'auto' || !showList || !inputRef.current) return undefined
+    const input = inputRef.current
+    const update = () => setFit(measure(input))
+    update()
+    const vv = window.visualViewport
+    vv?.addEventListener('resize', update)
+    vv?.addEventListener('scroll', update)
+    window.addEventListener('resize', update)
+    window.addEventListener('scroll', update, true)
+    return () => {
+      vv?.removeEventListener('resize', update)
+      vv?.removeEventListener('scroll', update)
+      window.removeEventListener('resize', update)
+      window.removeEventListener('scroll', update, true)
+    }
+  }, [placement, showList])
+  const side = placement === 'auto' ? (fit?.side ?? 'down') : placement
+  const listStyle: CSSProperties | undefined =
+    placement === 'auto' && fit ? { maxHeight: fit.maxHeight } : undefined
 
   const choose = (item: T) => {
     onSelect(item)
@@ -78,7 +148,7 @@ export function Combobox<T>({
   }
 
   return (
-    <div className={`combobox combobox--${placement}`}>
+    <div className={`combobox combobox--${side}`}>
       <label className="label" htmlFor={`${uid}-input`}>
         {label}
       </label>
@@ -121,6 +191,7 @@ export function Combobox<T>({
         <ul
           id={listId}
           className="combobox__list"
+          style={listStyle}
           role="listbox"
           aria-label={`${label} suggestions`}
           // keep focus in the input while tapping an option
