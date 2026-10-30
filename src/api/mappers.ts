@@ -114,6 +114,8 @@ export function mapTerminals(raw: unknown): Terminal[] {
       isAvailableLive: toBool(r.is_available_live),
       isVisible: toBool(r.is_visible),
       hasLoadingDock: toBool(r.has_loading_dock),
+      idSpaceStation: toNum(r.id_space_station),
+      idCity: toNum(r.id_city),
       hasFreightElevator: toBool(r.has_freight_elevator),
       isAutoLoad: toBool(r.is_auto_load),
     }

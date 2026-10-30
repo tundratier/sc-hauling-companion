@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Haul, StopoverComparison, StopoverLeg } from '../calc'
-import { chainPath, stopoverVerdict } from './OptionLine'
+import { chainPath, elevatorNote, stopoverVerdict } from './OptionLine'
 
 const leg = (from: number, to: number): StopoverLeg => ({
   from,
@@ -39,5 +39,16 @@ describe('stopoverVerdict', () => {
 
   it('returns null for lines without skips', () => {
     expect(stopoverVerdict({ stopovers: null } as Haul)).toBeNull()
+  })
+})
+
+describe('elevatorNote', () => {
+  it('names the limiting stops and why', () => {
+    expect(elevatorNote({ size: 24, stops: [1], reasons: ['outpost'] })).toBe(
+      'max 24 SCU boxes — elevator at #2 (outpost)',
+    )
+    expect(elevatorNote({ size: 24, stops: [0, 2], reasons: ['smallHangar', 'outpost'] })).toBe(
+      'max 24 SCU boxes — elevator at #1 (small hangar), #3 (outpost)',
+    )
   })
 })

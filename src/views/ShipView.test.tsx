@@ -142,19 +142,62 @@ describe('ShipView', () => {
     expect(useAppStore.getState()).toMatchObject({ boxMin: 16, boxMax: 16 })
   })
 
-  it('has the filter toggles (illegal on, volatile off) and no stock/demand filters', async () => {
+  it('has the filter toggles (illegal on, volatile off, low stock off) and no demand filter', async () => {
     const user = userEvent.setup()
     render(<ShipView />)
     expect(screen.getByRole('checkbox', { name: 'Include illegal commodities' })).toBeChecked()
     expect(screen.getByRole('checkbox', { name: /quantum-volatile/ })).not.toBeChecked()
-    expect(screen.queryByText(/stock|demand/i)).not.toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: 'Hide low & no stock' })).not.toBeChecked()
+    expect(
+      screen.getByText(
+        'Hides trades whose reported stock is low or empty — for stress-free hauling',
+      ),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/demand/i)).not.toBeInTheDocument()
     await user.click(screen.getByRole('checkbox', { name: 'Include illegal commodities' }))
     await user.click(screen.getByRole('checkbox', { name: /quantum-volatile/ }))
-    expect(useAppStore.getState()).toMatchObject({ includeIllegal: false, includeVolatileQt: true })
+    await user.click(screen.getByRole('checkbox', { name: 'Hide low & no stock' }))
+    expect(useAppStore.getState()).toMatchObject({
+      includeIllegal: false,
+      includeVolatileQt: true,
+      hideLowStock: true,
+    })
     await user.selectOptions(screen.getByLabelText('Max price age'), '7')
     expect(useAppStore.getState().maxPriceAgeDays).toBe(7)
     await user.selectOptions(screen.getByLabelText('Max price age'), 'Any age')
     expect(useAppStore.getState().maxPriceAgeDays).toBeNull()
+  })
+
+  describe('small hangar toggle (§7.3)', () => {
+    const toggle = () => screen.getByRole('checkbox', { name: /Lands in a small hangar \(S\)/ })
+
+    it('is off without a ship and explains the rule', () => {
+      render(<ShipView />)
+      expect(toggle()).not.toBeChecked()
+      expect(toggle()).toHaveAccessibleName(
+        'Lands in a small hangar (S) — hangar elevators take max 24 SCU boxes',
+      )
+      expect(
+        screen.getByText(
+          /Outposts always take max 24 SCU; cities and stations without a loading dock/,
+        ),
+      ).toBeInTheDocument()
+    })
+
+    it('is preset from the ship pad (S on, M off) and can be overridden', async () => {
+      const user = userEvent.setup()
+      render(<ShipView />)
+      await chooseShip(user, 'odd', 'Odd Hauler') // pad S
+      expect(toggle()).toBeChecked()
+      expect(useAppStore.getState().smallHangar).toBe(true)
+      await user.click(toggle())
+      expect(useAppStore.getState().smallHangar).toBe(false)
+      await user.clear(screen.getByRole('combobox', { name: 'Ship' }))
+      await chooseShip(user, 'cutlass bl', 'Drake Cutlass Black') // pad M
+      expect(toggle()).not.toBeChecked()
+      await user.click(toggle()) // unknown or wrong pad data: the user overrides
+      expect(useAppStore.getState().smallHangar).toBe(true)
+    })
   })
 
   it('shows the data attribution footer and data timestamps', () => {

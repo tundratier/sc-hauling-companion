@@ -1,5 +1,5 @@
 import { useId, useState, type ReactNode } from 'react'
-import type { Haul, StopoverLeg } from '../calc'
+import type { ElevatorCap, Haul, StopoverLeg } from '../calc'
 import type { Terminal } from '../domain/types'
 import { formatAgeDays, formatInt, formatPercent, formatSigned } from '../lib/format'
 import { activeWarnings, describeWarning, reportedSummary } from '../lib/inventoryText'
@@ -33,6 +33,14 @@ function Field({ label, value }: { label: string; value: string }) {
 export function boxBreakdown(haul: Haul): string {
   const parts = haul.boxes.map((b) => `${b.count}×${b.size}`).join(' + ')
   return `${parts} = ${haul.boxCount} box${haul.boxCount === 1 ? '' : 'es'}`
+}
+
+/** `max 24 SCU boxes — elevator at #2 (outpost)` / `… at #1 (small hangar), #3 (outpost)` */
+export function elevatorNote(cap: ElevatorCap): string {
+  const where = cap.stops
+    .map((stop, k) => `#${stop + 1} (${cap.reasons[k] === 'outpost' ? 'outpost' : 'small hangar'})`)
+    .join(', ')
+  return `max ${cap.size} SCU boxes — elevator at ${where}`
 }
 
 /** The stops a haul passes without selling, 1-based: "#2" or "#2–#4". */
@@ -234,6 +242,9 @@ export function OptionLine({
           <p className="num muted">
             □ {haul.boxSizes.join('·')} — {boxBreakdown(haul)}
           </p>
+          {haul.elevatorCap && (
+            <p className="num muted option__elevator">{elevatorNote(haul.elevatorCap)}</p>
+          )}
           <div className="fields">
             <Field label="Investment" value={formatInt(haul.investment)} />
             <Field label="Revenue" value={formatInt(haul.revenue)} />

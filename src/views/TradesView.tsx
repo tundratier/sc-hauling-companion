@@ -17,7 +17,7 @@ const SORTS: { key: HaulSortKey; label: string }[] = [
   { key: 'investment', label: 'Investment' },
 ]
 
-/** Why trades are missing: counted by reason (box size, illegal, volatile, price age). */
+/** Why trades are missing: counted by reason (box size, elevator, illegal, volatile, price age, low stock). */
 export function droppedLines(d: DroppedCounts): string[] {
   const lines: string[] = []
   if (d.boxTooLarge > 0)
@@ -28,9 +28,14 @@ export function droppedLines(d: DroppedCounts): string[] {
     lines.push(
       `${d.boxTooSmall} trade${d.boxTooSmall === 1 ? ' only comes' : 's only come'} in boxes smaller than your minimum`,
     )
+  if (d.elevator > 0)
+    lines.push(
+      `${d.elevator} trade${d.elevator === 1 ? '' : 's'} need boxes bigger than the cargo elevators take`,
+    )
   if (d.illegal > 0) lines.push(`${d.illegal} hidden by the illegal-commodities filter`)
   if (d.volatileQt > 0) lines.push(`${d.volatileQt} hidden by the quantum-volatile filter`)
   if (d.priceAge > 0) lines.push(`${d.priceAge} hidden by the price-age filter`)
+  if (d.lowStock > 0) lines.push(`${d.lowStock} hidden by the low-stock filter`)
   return lines
 }
 
