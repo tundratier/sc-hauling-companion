@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { resetMemoryCache } from '../api/cache'
 import { resetMapMemory } from '../api/terminalMap'
 import { DEFAULT_SUGGEST_OPTIONS } from '../route/suggest'
+import type { SuggestJob } from '../route/suggest/run'
 import { setSuggestClient } from '../route/suggest/suggestClient'
 import { useAppStore } from '../state/useAppStore'
 import { useDataStore } from '../state/useDataStore'
@@ -300,6 +301,35 @@ describe('suggestions in the route list', () => {
     await waitFor(() => expect(document.querySelectorAll('[data-stop-row]')).toHaveLength(3))
     await user.click(screen.getByRole('button', { name: 'Move stop 2 up' }))
     expect(useAppStore.getState().stops).toEqual([4, 1, 2])
+  })
+})
+
+describe('calc settings reach the search worker (revision 14)', () => {
+  it('sends the small-hangar toggle and the stock filter with every request', async () => {
+    seed()
+    serveMap()
+    const jobs: SuggestJob[] = []
+    setSuggestClient({
+      run: (job) => {
+        jobs.push(job)
+        return Promise.resolve({ kind: 'none', bestFound: false })
+      },
+      dispose: () => {},
+    })
+    useAppStore.setState({ smallHangar: true, hideLowStock: true })
+    const user = userEvent.setup()
+    render(<RouteView />)
+    await enable(user)
+    await waitFor(() => expect(jobs.length).toBeGreaterThan(0), { timeout: 4000 })
+    expect(jobs.at(-1)?.request.calc).toMatchObject({
+      smallHangar: true,
+      options: { hideLowStock: true },
+    })
+    // changing a setting triggers a new request carrying the new value
+    useAppStore.getState().setSmallHangar(false)
+    await waitFor(() => expect(jobs.at(-1)?.request.calc.smallHangar).toBe(false), {
+      timeout: 4000,
+    })
   })
 })
 

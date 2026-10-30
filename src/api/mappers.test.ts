@@ -111,6 +111,18 @@ describe('mapTerminals', () => {
     expect(result.find((t) => t.id === 17)!.isAvailableLive).toBe(false)
   })
 
+  it('maps the elevator fields: station, city and loading dock (§6.3)', () => {
+    const t = (id: number) => result.find((x) => x.id === id)!
+    expect(t(10)).toMatchObject({ idSpaceStation: 7, idCity: 0, hasLoadingDock: true })
+    expect(t(11)).toMatchObject({ idSpaceStation: 0, idCity: 5, hasLoadingDock: false })
+    expect(t(13)).toMatchObject({ idSpaceStation: 0, idCity: 0, hasLoadingDock: false })
+  })
+
+  it('treats missing or non-numeric station/city ids as 0 (planetary outpost)', () => {
+    const [t] = mapTerminals([{ id: 99, id_space_station: 'x' }])
+    expect(t).toMatchObject({ idSpaceStation: 0, idCity: 0 })
+  })
+
   it('keeps non-unique displaynames distinct by id', () => {
     const area18 = result.filter((t) => t.displayname === 'Area18')
     expect(area18.map((t) => t.id)).toEqual([11, 12])

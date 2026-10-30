@@ -28,6 +28,7 @@ const calcBase: Omit<CalcInput, 'stops'> = {
   freeScu: 10,
   shipBoxSizes: null,
   boxRange: { min: 1, max: 32 },
+  smallHangar: false,
   options: DEFAULT_CALC_OPTIONS,
 }
 
@@ -791,5 +792,71 @@ describe('accepted dynamic stops (§6.7, revision 13)', () => {
       options: { perGap: 2 },
     }
     expect(run(args)).toEqual(run(args))
+  })
+})
+
+describe('elevator caps and stock filter reach the search (revision 14)', () => {
+  const big = { freeScu: 64 }
+  const only32: Offers = [
+    buyOffer(1, 3, 100, { containerSizes: [32] }),
+    sellOffer(1, 2, 150, { containerSizes: [32] }),
+  ]
+  const stations = (over: Partial<Terminal> = {}) =>
+    [1, 2, 3].map((id) => terminal(id, { idSpaceStation: 1, ...over }))
+
+  it('does not suggest an outpost whose trade needs 32 SCU boxes', () => {
+    const terminals = [
+      terminal(1, { idSpaceStation: 1 }),
+      terminal(2, { idSpaceStation: 1 }),
+      terminal(3, { idSpaceStation: 0, idCity: 0, outpostName: 'Outpost' }),
+    ]
+    expect(
+      run({ nodes: [A, X, B], terminals, offers: only32, fixed: [1, 2], calc: big }).kind,
+    ).toBe('none')
+    // the same trade at a station is fine
+    expect(
+      run({ nodes: [A, X, B], terminals: stations(), offers: only32, fixed: [1, 2], calc: big })
+        .kind,
+    ).toBe('ok')
+  })
+
+  it('uses the small-hangar toggle: stations need boxes of 24 or less', () => {
+    const args = {
+      nodes: [A, X, B],
+      terminals: stations(),
+      offers: only32,
+      fixed: [1, 2],
+      calc: big,
+    }
+    expect(run({ ...args, calc: { ...big, smallHangar: true } }).kind).toBe('none')
+    expect(run({ ...args, calc: { ...big, smallHangar: false } }).kind).toBe('ok')
+  })
+
+  it('limits the suggested profit to what the elevator takes', () => {
+    // 64 SCU free in 32 SCU boxes = 64; with a small hangar only 24s fit: 48
+    const offers: Offers = [buyOffer(1, 3, 100), sellOffer(1, 2, 150)]
+    const args = {
+      nodes: [A, X, B],
+      terminals: stations(),
+      offers,
+      fixed: [1, 2],
+      calc: { freeScu: 64, boxRange: { min: 24, max: 32 } },
+    }
+    expect(ok(run(args)).profitAfter).toBe(64 * 50)
+    expect(ok(run({ ...args, calc: { ...args.calc, smallHangar: true } })).profitAfter).toBe(
+      48 * 50,
+    )
+  })
+
+  it('applies the opt-in stock filter to the suggested trades', () => {
+    const offers: Offers = [buyOffer(1, 3, 100, { statusBuy: 1 }), sellOffer(1, 2, 150)]
+    const args = { nodes: [A, X, B], terminals: stations(), offers, fixed: [1, 2] }
+    expect(run(args).kind).toBe('ok')
+    expect(
+      run({
+        ...args,
+        calc: { options: { ...DEFAULT_CALC_OPTIONS, hideLowStock: true } },
+      }).kind,
+    ).toBe('none')
   })
 })

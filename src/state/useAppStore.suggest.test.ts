@@ -157,3 +157,54 @@ describe('stop origin (§6.7)', () => {
     expect(origins()).toEqual(['fixed', 'dynamic', 'fixed'])
   })
 })
+
+describe('small hangar and stock filter', () => {
+  const vehicle = (padType: string | null) =>
+    ({ id: 1, name: 'V', nameFull: 'V', scu: 10, containerSizes: null, padType }) as never
+
+  it('start off', () => {
+    expect(s()).toMatchObject({ smallHangar: false, hideLowStock: false })
+  })
+
+  it('presets the small hangar from the ship pad: only S counts', () => {
+    for (const [pad, expected] of [
+      ['S', true],
+      ['s', true],
+      ['XS', false],
+      ['M', false],
+      ['L', false],
+      ['', false],
+      [null, false],
+    ] as const) {
+      s().selectVehicle(vehicle(pad))
+      expect(s().smallHangar).toBe(expected)
+    }
+  })
+
+  it('resets the user override whenever the ship changes, and is off without a ship', () => {
+    s().selectVehicle(vehicle('M'))
+    s().setSmallHangar(true)
+    expect(s().smallHangar).toBe(true)
+    s().selectVehicle(vehicle('M'))
+    expect(s().smallHangar).toBe(false)
+    s().selectVehicle(vehicle('S'))
+    s().setSmallHangar(false)
+    expect(s().smallHangar).toBe(false)
+    s().selectVehicle(vehicle('S'))
+    s().selectVehicle(null)
+    expect(s().smallHangar).toBe(false)
+  })
+
+  it('persists both choices', () => {
+    s().setSmallHangar(true)
+    s().setHideLowStock(true)
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}')
+    expect(saved.state).toMatchObject({ smallHangar: true, hideLowStock: true })
+  })
+
+  it('loads saved state from before the options existed with both off', async () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ state: { stops: [1, 2] }, version: 1 }))
+    await useAppStore.persist.rehydrate()
+    expect(s()).toMatchObject({ smallHangar: false, hideLowStock: false })
+  })
+})

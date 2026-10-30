@@ -538,16 +538,29 @@ describe('expanded option line', () => {
 })
 
 describe('droppedLines', () => {
+  const none = {
+    boxTooLarge: 0,
+    boxTooSmall: 0,
+    illegal: 0,
+    volatileQt: 0,
+    priceAge: 0,
+    lowStock: 0,
+    elevator: 0,
+  }
+
   it('pluralizes and skips zero counts', () => {
-    expect(
-      droppedLines({ boxTooLarge: 0, boxTooSmall: 0, illegal: 0, volatileQt: 0, priceAge: 0 }),
-    ).toEqual([])
-    expect(
-      droppedLines({ boxTooLarge: 2, boxTooSmall: 1, illegal: 0, volatileQt: 0, priceAge: 3 }),
-    ).toEqual([
+    expect(droppedLines(none)).toEqual([])
+    expect(droppedLines({ ...none, boxTooLarge: 2, boxTooSmall: 1, priceAge: 3 })).toEqual([
       '2 trades need bigger boxes than your ship takes',
       '1 trade only comes in boxes smaller than your minimum',
       '3 hidden by the price-age filter',
+    ])
+  })
+
+  it('names the elevator and low-stock reasons', () => {
+    expect(droppedLines({ ...none, elevator: 1, lowStock: 4 })).toEqual([
+      '1 trade need boxes bigger than the cargo elevators take',
+      '4 hidden by the low-stock filter',
     ])
   })
 })
@@ -575,5 +588,86 @@ describe('prices on the collapsed line', () => {
     expect(lines(1)[0]).not.toHaveTextContent('Buy / SCU')
     expect(lines(1)[0]).not.toHaveTextContent('Sell / SCU')
     expect(lines(1)[0]).toHaveTextContent('Margin / SCU505')
+  })
+})
+
+describe('elevator caps in the trade lines (criterion 19)', () => {
+  const makeOutpost = (id: number) =>
+    useDataStore.setState((s) => ({
+      staticData: s.staticData && {
+        ...s.staticData,
+        data: {
+          ...s.staticData.data,
+          terminals: s.staticData.data.terminals.map((t) =>
+            t.id === id ? { ...t, idSpaceStation: 0, idCity: 0, outpostName: 'Outpost' } : t,
+          ),
+        },
+      },
+    }))
+
+  it('names the limiting stop in the expanded line', async () => {
+    seed({
+      offers: [buyOffer(1, 1, 100), sellOffer(1, 2, 150)],
+      ship: false,
+      stops: [1, 2],
+    })
+    useAppStore.setState({ boxMax: 32 })
+    makeOutpost(2)
+    const user = userEvent.setup()
+    render(<TradesView />)
+    const [line] = lines(1)
+    expect(line).toHaveTextContent('□ 1·2·4·8·16·24')
+    await user.click(within(line).getByRole('button', { name: /details for/i }))
+    expect(line).toHaveTextContent('max 24 SCU boxes — elevator at #2 (outpost)')
+  })
+
+  it('says "small hangar" when the toggle limits a station', async () => {
+    seed({
+      offers: [buyOffer(1, 1, 100), sellOffer(1, 2, 150)],
+      ship: false,
+      stops: [1, 2],
+    })
+    useAppStore.setState({ boxMax: 32, smallHangar: true })
+    const user = userEvent.setup()
+    render(<TradesView />)
+    const [line] = lines(1)
+    await user.click(within(line).getByRole('button', { name: /details for/i }))
+    expect(line).toHaveTextContent(
+      'max 24 SCU boxes — elevator at #1 (small hangar), #2 (small hangar)',
+    )
+  })
+
+  it('counts trades that only work with 32 SCU boxes as dropped', () => {
+    seed({
+      offers: [
+        buyOffer(1, 1, 100, { containerSizes: [32] }),
+        sellOffer(1, 2, 150, { containerSizes: [32] }),
+      ],
+      ship: false,
+      stops: [1, 2],
+    })
+    useAppStore.setState({ boxMax: 32, smallHangar: true })
+    render(<TradesView />)
+    expect(screen.getByText('No profitable trades along this route.')).toBeInTheDocument()
+    expect(screen.getByRole('list', { name: 'Trades not shown' })).toHaveTextContent(
+      '1 trade need boxes bigger than the cargo elevators take',
+    )
+  })
+
+  it('hides low and no stock hauls only when the filter is on, and counts them', () => {
+    seed({
+      offers: [buyOffer(1, 1, 100, { statusBuy: 1 }), sellOffer(1, 2, 150)],
+      stops: [1, 2],
+    })
+    const { unmount } = render(<TradesView />)
+    expect(lines(1)).toHaveLength(1)
+    expect(lines(1)[0]).toHaveTextContent('NO STOCK?')
+    unmount()
+    useAppStore.setState({ hideLowStock: true })
+    render(<TradesView />)
+    expect(screen.getByText('No profitable trades along this route.')).toBeInTheDocument()
+    expect(screen.getByRole('list', { name: 'Trades not shown' })).toHaveTextContent(
+      '1 hidden by the low-stock filter',
+    )
   })
 })

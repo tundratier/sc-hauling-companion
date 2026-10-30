@@ -21,7 +21,7 @@ export interface PairProfits {
  */
 export function pairProfits(
   ids: number[],
-  input: Pick<CalcInput, 'freeScu' | 'shipBoxSizes' | 'boxRange' | 'options'>,
+  input: Pick<CalcInput, 'freeScu' | 'shipBoxSizes' | 'boxRange' | 'smallHangar' | 'options'>,
   data: CalcData,
   nowSec: number,
 ): PairProfits {
@@ -52,6 +52,7 @@ export function pairProfits(
           data.terminalById.get(ids[b]),
           ship,
           input.boxRange,
+          input.smallHangar,
         )
         const qty = maxFillable(cap, boxSizes)
         const total = margin * qty

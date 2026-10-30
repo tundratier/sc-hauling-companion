@@ -37,7 +37,12 @@ export interface Terminal {
   maxContainerSize: number
   isAvailableLive: boolean
   isVisible: boolean
+  /** External cargo elevator (loading dock): a station with it takes 32 SCU boxes (SPEC §6.3). */
   hasLoadingDock: boolean
+  /** > 0 → the terminal is at a space station. */
+  idSpaceStation: number
+  /** > 0 → the terminal is in a city. */
+  idCity: number
   hasFreightElevator: boolean
   isAutoLoad: boolean
 }

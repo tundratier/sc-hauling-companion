@@ -13,6 +13,7 @@ const job = (fixed: number[] = [1, 2]): SuggestJob => ({
       freeScu: 10,
       shipBoxSizes: null,
       boxRange: { min: 1, max: 32 },
+      smallHangar: false,
       options: DEFAULT_CALC_OPTIONS,
     },
     options: { ...DEFAULT_SUGGEST_OPTIONS, enabled: true },

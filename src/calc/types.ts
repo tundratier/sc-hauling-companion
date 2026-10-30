@@ -1,6 +1,7 @@
 import type { PriceIndexes, StaticIndexes } from '../api/indexes'
 import type { Commodity, PriceOffer } from '../domain/types'
 import type { BoxCount } from './boxes'
+import type { ElevatorCap } from './elevator'
 
 export type { BoxCount }
 
@@ -16,12 +17,15 @@ export interface CalcOptions {
   includeVolatileQt: boolean
   /** Default null (no filter); ages are always shown. */
   maxPriceAgeDays: number | null
+  /** Default false — opt-in: hides hauls with a NO STOCK? or LOW STOCK? buy row (reported data). */
+  hideLowStock: boolean
 }
 
 export const DEFAULT_CALC_OPTIONS: CalcOptions = {
   includeIllegal: true,
   includeVolatileQt: false,
   maxPriceAgeDays: null,
+  hideLowStock: false,
 }
 
 export interface CalcInput {
@@ -33,6 +37,8 @@ export interface CalcInput {
   shipBoxSizes: number[] | null
   /** User-chosen box size range (values from the standard sizes), min ≤ max. */
   boxRange: BoxRange
+  /** The ship lands in a small (S) hangar: hangar elevators take ≤ 24 SCU boxes (§6.3). */
+  smallHangar: boolean
   options: CalcOptions
 }
 
@@ -134,6 +140,8 @@ export interface Haul {
   sellAgeDays: number | null
   reported: ReportedInventory
   flags: HaulFlags
+  /** Set when an elevator limit removed box sizes that would otherwise be allowed (§6.3). */
+  elevatorCap: ElevatorCap | null
   /** Only for skip hauls (skips > 0); null otherwise. */
   stopovers: StopoverComparison | null
 }
@@ -146,6 +154,10 @@ export interface DroppedCounts {
   illegal: number
   volatileQt: number
   priceAge: number
+  /** Reported stock is low or empty and the "Hide low & no stock" filter is on. */
+  lowStock: number
+  /** Only sizes above the cargo elevator limit are on offer. */
+  elevator: number
 }
 
 export interface CalcResult {
@@ -159,5 +171,13 @@ export interface CalcResult {
 export const EMPTY_RESULT: CalcResult = {
   hauls: [],
   byStop: [],
-  dropped: { boxTooLarge: 0, boxTooSmall: 0, illegal: 0, volatileQt: 0, priceAge: 0 },
+  dropped: {
+    boxTooLarge: 0,
+    boxTooSmall: 0,
+    illegal: 0,
+    volatileQt: 0,
+    priceAge: 0,
+    lowStock: 0,
+    elevator: 0,
+  },
 }

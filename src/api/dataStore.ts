@@ -10,7 +10,12 @@ import {
   fetchVehicles,
 } from './uexClient'
 
-export const STATIC_KEY = `static:v${SCHEMA_VERSION}`
+/**
+ * Shape of the cached static data. Bumped to 2 when terminals gained `idSpaceStation` and `idCity`
+ * (elevator caps); the prices entry keeps its shape and its cache.
+ */
+export const STATIC_SCHEMA_VERSION = 2
+export const STATIC_KEY = `static:v${STATIC_SCHEMA_VERSION}`
 export const PRICES_KEY = `prices:v${SCHEMA_VERSION}`
 export const STATIC_TTL_MS = 24 * 60 * 60 * 1000
 export const PRICES_TTL_MS = 30 * 60 * 1000
@@ -56,6 +61,7 @@ export interface PriceLoadOptions extends LoadOptions<PriceData> {
 
 interface DatasetConfig<T> {
   key: string
+  schemaVersion: number
   ttlMs: number
   cooldownMs?: number
   /** Extra validity check besides the TTL (e.g. game version). */
@@ -93,7 +99,7 @@ function refresh<T>(cfg: DatasetConfig<T>, signal?: AbortSignal): Promise<Loaded
       const { data, gameVersion } = await cfg.fetchFresh(signal)
       const entry: CacheEntry<T> = {
         key: cfg.key,
-        schemaVersion: SCHEMA_VERSION,
+        schemaVersion: cfg.schemaVersion,
         fetchedAt: Date.now(),
         gameVersion,
         data,
@@ -109,7 +115,7 @@ function refresh<T>(cfg: DatasetConfig<T>, signal?: AbortSignal): Promise<Loaded
 }
 
 async function loadDataset<T>(cfg: DatasetConfig<T>, opts: LoadOptions<T>): Promise<Loaded<T>> {
-  const cached = await cacheGet<T>(cfg.key)
+  const cached = await cacheGet<T>(cfg.key, cfg.schemaVersion)
   const now = Date.now()
 
   if (cached) {
@@ -159,7 +165,12 @@ async function fetchStatic(signal?: AbortSignal) {
 /** Commodities, terminals, vehicles and game version: one entry, 4 requests, 24 h TTL. */
 export function loadStaticData(opts: LoadOptions<StaticData> = {}): Promise<Loaded<StaticData>> {
   return loadDataset<StaticData>(
-    { key: STATIC_KEY, ttlMs: STATIC_TTL_MS, fetchFresh: fetchStatic },
+    {
+      key: STATIC_KEY,
+      schemaVersion: STATIC_SCHEMA_VERSION,
+      ttlMs: STATIC_TTL_MS,
+      fetchFresh: fetchStatic,
+    },
     opts,
   )
 }
@@ -173,6 +184,7 @@ export function loadPrices(opts: PriceLoadOptions = {}): Promise<Loaded<PriceDat
   return loadDataset<PriceData>(
     {
       key: PRICES_KEY,
+      schemaVersion: SCHEMA_VERSION,
       ttlMs: PRICES_TTL_MS,
       cooldownMs: PRICES_REFRESH_COOLDOWN_MS,
       isCurrent: (entry) => gameVersion === null || entry.gameVersion === gameVersion,
@@ -187,7 +199,7 @@ export function loadPrices(opts: PriceLoadOptions = {}): Promise<Loaded<PriceDat
 
 /** Cached data without any network access (null if nothing cached). */
 export async function peekStatic(): Promise<Loaded<StaticData> | null> {
-  const entry = await cacheGet<StaticData>(STATIC_KEY)
+  const entry = await cacheGet<StaticData>(STATIC_KEY, STATIC_SCHEMA_VERSION)
   return entry ? toLoaded(entry, !isFresh(entry, STATIC_TTL_MS), null) : null
 }
 
