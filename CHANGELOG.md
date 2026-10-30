@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.1 - 2026-10-30
+
+### Bug Fixes
+
+- **route:** Space the stop row buttons
+- **route:** Open the stop search list on the side with room
+
 ## 1.2.0 - 2026-10-29
 
 ### Features
