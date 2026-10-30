@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.0 - 2026-10-30
+
+### Features
+
+- **calc:** Cap boxes at cargo elevator limits and add an opt-in low-stock filter
+
 ## 1.2.1 - 2026-10-30
 
 ### Bug Fixes
