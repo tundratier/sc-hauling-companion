@@ -367,6 +367,8 @@ describe('calculate', () => {
       illegal: 0,
       volatileQt: 0,
       priceAge: 0,
+      lowStock: 0,
+      elevator: 0,
     })
   })
 

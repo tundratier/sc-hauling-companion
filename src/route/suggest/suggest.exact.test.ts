@@ -22,6 +22,7 @@ const calc: Omit<CalcInput, 'stops'> = {
   freeScu: 12,
   shipBoxSizes: null,
   boxRange: { min: 1, max: 32 },
+  smallHangar: false,
   options: DEFAULT_CALC_OPTIONS,
 }
 const commodities = [1, 2, 3].map((id) => commodity(id))

@@ -4,6 +4,7 @@ import { compareStopovers } from './stopovers'
 import { EMPTY_RESULT, type CalcData, type CalcInput, type CalcResult } from './types'
 
 export * from './boxes'
+export * from './elevator'
 export { compareHauls, generateCandidates, STALE_AFTER_DAYS, type HaulSortKey } from './candidates'
 export { groupByStop } from './stops'
 export { compareStopovers } from './stopovers'

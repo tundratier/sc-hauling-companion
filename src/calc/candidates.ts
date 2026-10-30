@@ -1,6 +1,13 @@
 import type { Commodity, PriceOffer, Terminal } from '../domain/types'
 import { STD_BOX_SIZES } from '../domain/types'
 import { decomposeBoxes, maxFillable } from './boxes'
+import {
+  ELEVATOR_MAX_BOX,
+  elevatorLimit,
+  elevatorSizes,
+  type ElevatorCap,
+  type ElevatorReason,
+} from './elevator'
 import type {
   BoxRange,
   CalcData,
@@ -38,7 +45,7 @@ export function filterReason(
   sell: PriceOffer,
   options: CalcOptions,
   nowSec: number,
-): 'illegal' | 'volatileQt' | 'priceAge' | null {
+): 'illegal' | 'volatileQt' | 'priceAge' | 'lowStock' | null {
   if (!options.includeIllegal && commodity.isIllegal) return 'illegal'
   if (!options.includeVolatileQt && commodity.isVolatileQt) return 'volatileQt'
   if (options.maxPriceAgeDays !== null) {
@@ -53,10 +60,16 @@ export function filterReason(
       return 'priceAge'
     }
   }
+  // opt-in stock filter: the buy row reports NO STOCK? (1) or LOW STOCK? (2)
+  if (options.hideLowStock && (buy.statusBuy === 1 || buy.statusBuy === 2)) return 'lowStock'
   return null
 }
 
-/** B = STD ∩ buy sizes ∩ sell sizes ∩ ship sizes ∩ [min, max] (§6.3); `usable` is B before the range. */
+/**
+ * B = STD ∩ buy sizes ∩ sell sizes ∩ ship sizes ∩ elevator sizes ∩ [min, max] (§6.3).
+ * `usable` is B before the range; `plain` is B without the elevator limit, which tells an
+ * elevator-only drop from a range or ship drop and which sizes the elevator removed.
+ */
 export function allowedBoxes(
   buy: PriceOffer,
   sell: PriceOffer,
@@ -64,11 +77,41 @@ export function allowedBoxes(
   sellTerminal: Terminal | undefined,
   ship: readonly number[],
   range: BoxRange,
-): { usable: number[]; boxSizes: number[] } {
+  smallHangar = false,
+): { usable: number[]; boxSizes: number[]; plain: number[] } {
   const buySizes = terminalSizes(buy.containerSizes, buyTerminal)
   const sellSizes = terminalSizes(sell.containerSizes, sellTerminal)
-  const usable = intersect(intersect(intersect(STD_BOX_SIZES, buySizes), sellSizes), ship)
-  return { usable, boxSizes: usable.filter((s) => s >= range.min && s <= range.max) }
+  const offered = intersect(intersect(intersect(STD_BOX_SIZES, buySizes), sellSizes), ship)
+  const inRange = (s: number) => s >= range.min && s <= range.max
+  const usable = intersect(offered, elevatorSizes(buyTerminal, sellTerminal, smallHangar))
+  return {
+    usable,
+    boxSizes: usable.filter(inRange),
+    plain: offered.filter(inRange),
+  }
+}
+
+/** Which elevator limits (stop indices) removed sizes that were otherwise allowed. */
+function elevatorCapOf(
+  i: number,
+  j: number,
+  buyTerminal: Terminal | undefined,
+  sellTerminal: Terminal | undefined,
+  smallHangar: boolean,
+): ElevatorCap {
+  const stops: number[] = []
+  const reasons: ElevatorReason[] = []
+  for (const [stop, terminal] of [
+    [i, buyTerminal],
+    [j, sellTerminal],
+  ] as const) {
+    const reason = elevatorLimit(terminal, smallHangar)
+    if (reason) {
+      stops.push(stop)
+      reasons.push(reason)
+    }
+  }
+  return { size: ELEVATOR_MAX_BOX, stops, reasons }
 }
 
 export function reportedInventory(buy: PriceOffer, sell: PriceOffer): ReportedInventory {
@@ -102,6 +145,8 @@ export function generateCandidates(
     illegal: 0,
     volatileQt: 0,
     priceAge: 0,
+    lowStock: 0,
+    elevator: 0,
   }
   const hauls: Haul[] = []
   const cap = Math.floor(input.freeScu)
@@ -135,14 +180,21 @@ export function generateCandidates(
         const sellAge = ageDays(sell, nowSec)
 
         const boxSizesUnknown = buy.containerSizes.length === 0 || sell.containerSizes.length === 0
-        const { usable, boxSizes } = allowedBoxes(
+        const sellTerminal = data.terminalById.get(stops[j])
+        const { usable, boxSizes, plain } = allowedBoxes(
           buy,
           sell,
           buyTerminal,
-          data.terminalById.get(stops[j]),
+          sellTerminal,
           ship,
           input.boxRange,
+          input.smallHangar,
         )
+        // only the elevator limit empties B: its own drop reason, checked before the others
+        if (boxSizes.length === 0 && plain.length > 0) {
+          dropped.elevator++
+          continue
+        }
         const qtyMax = maxFillable(cap, boxSizes)
         if (qtyMax === 0) {
           // Only sizes below the range minimum are on offer → "too small"; anything else
@@ -195,6 +247,10 @@ export function generateCandidates(
           sellAgeDays: sellAge,
           reported: reportedInventory(buy, sell),
           flags,
+          elevatorCap:
+            plain.length > boxSizes.length
+              ? elevatorCapOf(i, j, buyTerminal, sellTerminal, input.smallHangar)
+              : null,
           stopovers: null,
         })
       }

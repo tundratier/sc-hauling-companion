@@ -108,6 +108,18 @@ function ShipForm() {
         {vehicle && !vehicle.containerSizes && (
           <p className="warn">Box sizes for this ship unknown — set the largest box that fits.</p>
         )}
+        <label className="toggle">
+          <input
+            type="checkbox"
+            checked={app.smallHangar}
+            onChange={(e) => app.setSmallHangar(e.target.checked)}
+          />
+          <span>Lands in a small hangar (S) — hangar elevators take max 24 SCU boxes</span>
+        </label>
+        <p className="muted fineprint">
+          Outposts always take max 24 SCU; cities and stations without a loading dock too when you
+          land in a small hangar.
+        </p>
       </section>
 
       <section className="panel stack" aria-label="Filters">
@@ -128,6 +140,17 @@ function ShipForm() {
           />
           <span>Include quantum-volatile commodities</span>
         </label>
+        <label className="toggle">
+          <input
+            type="checkbox"
+            checked={app.hideLowStock}
+            onChange={(e) => app.setHideLowStock(e.target.checked)}
+          />
+          <span>Hide low &amp; no stock</span>
+        </label>
+        <p className="muted fineprint">
+          Hides trades whose reported stock is low or empty — for stress-free hauling
+        </p>
         <div>
           <label className="label" htmlFor="max-age">
             Max price age

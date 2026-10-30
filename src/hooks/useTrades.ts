@@ -24,6 +24,8 @@ export function useCalcSettings(): { calc: Omit<CalcInput, 'stops'>; vehicle: Ve
   const includeIllegal = useAppStore((s) => s.includeIllegal)
   const includeVolatileQt = useAppStore((s) => s.includeVolatileQt)
   const maxPriceAgeDays = useAppStore((s) => s.maxPriceAgeDays)
+  const smallHangar = useAppStore((s) => s.smallHangar)
+  const hideLowStock = useAppStore((s) => s.hideLowStock)
   const staticData = useDataStore((s) => s.staticData?.data)
 
   const vehicle = useMemo(
@@ -36,9 +38,20 @@ export function useCalcSettings(): { calc: Omit<CalcInput, 'stops'>; vehicle: Ve
       freeScu: Math.min(freeScu, vehicle?.scu ?? Number.MAX_SAFE_INTEGER),
       shipBoxSizes: vehicle?.containerSizes ?? null,
       boxRange: { min: boxMin, max: boxMax },
-      options: { includeIllegal, includeVolatileQt, maxPriceAgeDays },
+      smallHangar,
+      options: { includeIllegal, includeVolatileQt, maxPriceAgeDays, hideLowStock },
     }),
-    [freeScu, vehicle, boxMin, boxMax, includeIllegal, includeVolatileQt, maxPriceAgeDays],
+    [
+      freeScu,
+      vehicle,
+      boxMin,
+      boxMax,
+      smallHangar,
+      includeIllegal,
+      includeVolatileQt,
+      maxPriceAgeDays,
+      hideLowStock,
+    ],
   )
   return { calc, vehicle }
 }

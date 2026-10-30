@@ -45,6 +45,13 @@ export interface AppState {
   showConceptShips: boolean
   includeIllegal: boolean
   includeVolatileQt: boolean
+  /**
+   * The ship lands in a small (S) hangar → hangar elevators take ≤ 24 SCU boxes (§6.3). Preset
+   * from the ship's `pad_type` whenever the ship changes; the user can override it.
+   */
+  smallHangar: boolean
+  /** Opt-in filter: hide hauls whose buy row reports NO STOCK? or LOW STOCK? (§6.1). */
+  hideLowStock: boolean
   /** Optional price age filter in days; null = off. */
   maxPriceAgeDays: number | null
   showUnavailableTerminals: boolean
@@ -67,6 +74,8 @@ export interface AppState {
   setShowConceptShips: (v: boolean) => void
   setIncludeIllegal: (v: boolean) => void
   setIncludeVolatileQt: (v: boolean) => void
+  setSmallHangar: (v: boolean) => void
+  setHideLowStock: (v: boolean) => void
   setMaxPriceAgeDays: (days: number | null) => void
   setShowUnavailableTerminals: (v: boolean) => void
   addStop: (terminalId: number) => void
@@ -129,6 +138,8 @@ export const useAppStore = create<AppState>()(
       showConceptShips: false,
       includeIllegal: true,
       includeVolatileQt: false,
+      smallHangar: false,
+      hideLowStock: false,
       maxPriceAgeDays: null,
       showUnavailableTerminals: false,
       stops: [],
@@ -145,14 +156,17 @@ export const useAppStore = create<AppState>()(
                 freeScu: clampFreeScu(vehicle.scu, vehicle.scu),
                 boxMin: Math.min(DEFAULT_BOX_MIN, defaultMaxBox(vehicle)),
                 boxMax: defaultMaxBox(vehicle),
+                smallHangar: isSmallPad(vehicle),
               }
-            : { vehicleId: null, boxMin: DEFAULT_BOX_MIN, boxMax: 32 },
+            : { vehicleId: null, boxMin: DEFAULT_BOX_MIN, boxMax: 32, smallHangar: false },
         ),
       setFreeScu: (scu, shipScu) => set({ freeScu: clampFreeScu(scu, shipScu) }),
       setBoxRange: (min, max) => set(normalizeBoxRange(min, max)),
       setShowConceptShips: (showConceptShips) => set({ showConceptShips }),
       setIncludeIllegal: (includeIllegal) => set({ includeIllegal }),
       setIncludeVolatileQt: (includeVolatileQt) => set({ includeVolatileQt }),
+      setSmallHangar: (smallHangar) => set({ smallHangar }),
+      setHideLowStock: (hideLowStock) => set({ hideLowStock }),
       setMaxPriceAgeDays: (maxPriceAgeDays) => set({ maxPriceAgeDays }),
       setShowUnavailableTerminals: (showUnavailableTerminals) => set({ showUnavailableTerminals }),
       addStop: (terminalId) =>
@@ -229,6 +243,8 @@ export const useAppStore = create<AppState>()(
         showConceptShips: s.showConceptShips,
         includeIllegal: s.includeIllegal,
         includeVolatileQt: s.includeVolatileQt,
+        smallHangar: s.smallHangar,
+        hideLowStock: s.hideLowStock,
         maxPriceAgeDays: s.maxPriceAgeDays,
         showUnavailableTerminals: s.showUnavailableTerminals,
         stops: s.stops,
@@ -253,3 +269,7 @@ export function normalizeBoxRange(min: number, max: number): { boxMin: number; b
 function savedState(value: unknown): Partial<AppState> {
   return typeof value === 'object' && value !== null ? { ...value } : {}
 }
+
+/** Only pad S counts as a small hangar (not XS, not M); unknown pads preset to off (§7.3). */
+export const isSmallPad = (vehicle: Vehicle): boolean =>
+  vehicle.padType?.trim().toUpperCase() === 'S'

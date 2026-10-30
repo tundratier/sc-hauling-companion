@@ -86,6 +86,40 @@ describe('cold start', () => {
   })
 })
 
+describe('static cache schema (terminals gained idSpaceStation / idCity)', () => {
+  const oldEntry = (schemaVersion: number) => ({
+    key: STATIC_KEY,
+    schemaVersion,
+    fetchedAt: Date.now(),
+    gameVersion: '4.10.2',
+    data: {
+      commodities: [],
+      terminals: [],
+      vehicles: [],
+      gameVersions: { live: '4.10.2', ptu: '' },
+    },
+  })
+
+  it('refetches static data cached in the old shape, once', async () => {
+    idb.store.set(STATIC_KEY, oldEntry(1))
+    const mock = installMockFetch()
+    const loaded = await loadStaticData()
+    expect(mock).toHaveBeenCalledTimes(4)
+    expect(loaded.data.terminals[0]).toHaveProperty('idSpaceStation')
+    // the next load is served from the new entry
+    const again = installMockFetch()
+    await loadStaticData()
+    expect(again).not.toHaveBeenCalled()
+  })
+
+  it('keeps using static data cached in the current shape, and never refetches prices for it', async () => {
+    idb.store.set(STATIC_KEY, oldEntry(2))
+    const mock = installMockFetch()
+    await loadStaticData()
+    expect(mock).not.toHaveBeenCalled()
+  })
+})
+
 describe('warm start within TTL', () => {
   it('performs 0 requests', async () => {
     const first = installMockFetch()
