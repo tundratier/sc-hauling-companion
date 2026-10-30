@@ -6,6 +6,11 @@ This document is the single source of truth for implementing v1.0. It is written
 
 ### Revision history
 
+**Revision 14 (2026-10-30)** — **cargo elevator limits** and a **stock filter**:
+- Every terminal gets an elevator box cap from rules the product owner confirmed (UEX has no data on hangar elevators): planetary terminals outside cities 24 SCU; cities and stations 24 SCU for ships that land in a small (S) hangar, except stations with an external loading dock. The cap applies at the buy and the sell terminal (§6.3).
+- SHIP: a "small hangar" toggle, preset from the ship's UEX `pad_type`, and an opt-in "Hide low & no stock" filter (§7.3). This is the first and only filter on reported inventory, deliberately opt-in (§6.1).
+- New drop reasons `elevator` and `lowStock` (§6.3, §7.5), acceptance criterion 19, tests (§8.1).
+
 **Revision 13 (2026-10-29)** — product owner review of "add profitable stops":
 - Every route stop remembers its **origin** (`fixed` = entered by the user, `dynamic` = accepted suggestion). Accepted dynamic stops **keep counting** towards the per-gap, total and per-group limits, and they still count after a recompute, so accepting suggestions no longer frees the budget for more (§6.7, §7.4).
 - ROUTE order: stop list → add stop → route actions → add profitable stops, with the summary and `ADD ALL` inside the profitable-stops section (§7.4).
@@ -253,7 +258,9 @@ Sample (trimmed): `{"id":1,"name":"Agricium","code":"AGRI","kind":"Metal","is_ra
 | `star_system_name`, `planet_name`, `moon_name`, `orbit_name`, `space_station_name`, `city_name`, `outpost_name` | string\|null | autocomplete haystack + secondary display line |
 | `max_container_size` | int | largest box the terminal handles; **0 = unknown** (33 terminals) |
 | `is_available_live`, `is_visible` | 0/1 | default filter: both 1 |
-| `has_loading_dock`, `has_freight_elevator`, `is_auto_load` | 0/1 | MAY show as icons |
+| `has_loading_dock` | 0/1 | **external cargo elevator** (loading dock): a station with it takes 32 SCU boxes even from ships in a small hangar (§6.3). 13 live stations in 4.10.2; no city or outpost has it |
+| `id_space_station`, `id_city` | int | > 0 → the terminal is at a station / in a city; neither → planetary outpost (§6.3 elevator cap) |
+| `has_freight_elevator`, `is_auto_load`, `has_docking_port` | 0/1 | MAY show as icons |
 
 **E3 `vehicles`** (283 records, 140 with `scu > 0`). Fields used:
 
@@ -266,7 +273,7 @@ Sample (trimmed): `{"id":1,"name":"Agricium","code":"AGRI","kind":"Metal","is_ra
 | `container_sizes` | string | CSV, e.g. `"1,2,4,8,16"`. **May be `""`, `null` or the string `"null"`** (e.g. Hull D, Kraken, Galaxy) → unknown. May contain non-standard values (6, 12) — ignore values not in {1,2,4,8,16,24,32}. |
 | `is_concept` | 0/1 | hidden by default (toggle) |
 | `is_ground_vehicle`, `is_spaceship` | 0/1 | display only |
-| `pad_type` | string\|null | display only |
+| `pad_type` | string\|null | `XS`/`S`/`M`/`L`/`XL`, empty or null for 54 of 283 vehicles (e.g. Golem Ox). Presets the "small hangar" toggle (`S` → on, §7.3); the user can override it |
 
 Sample: `{"id":…, "name_full":"Drake Cutlass Black","scu":46,"container_sizes":"1,2,4,8,16"}`, `"MISC Hull C" scu 4608 "1,2,4,8,16,24,32"`.
 
@@ -374,15 +381,17 @@ interface CalcInput {
   freeScu: number;            // C, integer ≥ 1
   shipBoxSizes: number[] | null; // from vehicle, null = unknown
   boxRange: { min: number; max: number }; // user-chosen box size range, values from STD (1..32), min ≤ max
+  smallHangar: boolean;       // the ship lands in a small (S) hangar → hangar elevators take ≤ 24 SCU (§6.3)
   options: {
     includeIllegal: boolean;          // default true (illegal hauls are badged)
     includeVolatileQt: boolean;       // default false
     maxPriceAgeDays: number | null;   // default null (no filter); ages are always shown
+    hideLowStock: boolean;            // default false — opt-in, hides NO STOCK? and LOW STOCK? hauls
   };
 }
 ```
 
-Reported inventory (`scu_*`, `status_*`) is deliberately **not** an input to any filter, cap or ranking. It only produces warnings (§6.3).
+Reported inventory (`scu_*`, `status_*`) is **not** an input to any cap or ranking. It produces warnings (§6.3), and it filters only when the user opts in with `hideLowStock` (use case: stress-free hauling of less popular commodities, where a full hold is very likely available). With the option off (default), nothing changes.
 
 ### 6.2 Eligibility of a commodity
 
@@ -398,14 +407,27 @@ For every pair of stop indices `i < j` and every commodity `c` with a buy offer 
   - `noStock` if `status_buy = 1`; `lowStock` if `status_buy = 2`.
   - `noDemand` if `status_sell = 7`; `lowDemand` if `status_sell = 6`.
   - Also carry the raw values for display: `scu_buy` (fallback `scu_buy_avg`), `scu_sell_stock`, and `scu_sell` only when `> 0`. A `status_sell` of 1 is shown only when `scu_sell > 0` (otherwise it is an unreported default, see §4.2).
-- **Allowed box sizes** `B = STD ∩ buySizes ∩ sellSizes ∩ shipSizes ∩ [boxRange.min, boxRange.max]` where
+- **Stock filter:** if `options.hideLowStock` and the buy row has `status_buy` 1 or 2 (the `noStock` / `lowStock` warnings), drop the haul and count it under `lowStock`. Demand warnings are not filtered.
+- **Elevator cap** per terminal (rules confirmed by the product owner; UEX has no hangar-elevator data):
+
+  | Terminal | `smallHangar` off | `smallHangar` on |
+  |---|---:|---:|
+  | Planetary, outside a city (`id_space_station = 0 && id_city = 0`) | 24 | 24 |
+  | City (`id_city > 0`, e.g. Area18, Lorville, New Babbage, Orison, Levski) | 32 | **24** |
+  | Station without loading dock (`id_space_station > 0`, `has_loading_dock = 0`) | 32 | **24** |
+  | Station with loading dock (`has_loading_dock = 1`: external cargo elevator) | 32 | 32 |
+
+  The cap applies at **both** ends (loading at the buy terminal, unloading at the sell terminal): `elevatorSizes = {s ∈ STD : s ≤ min(cap(buy terminal), cap(sell terminal))}`. It overrides a larger UEX `max_container_size` or row `container_sizes` (UEX lists cities and 17 outposts at 32). It never raises a smaller UEX value.
+- **Allowed box sizes** `B = STD ∩ buySizes ∩ sellSizes ∩ shipSizes ∩ elevatorSizes ∩ [boxRange.min, boxRange.max]` where
   - `STD = {1,2,4,8,16,24,32}`,
   - `buySizes` = the buy row's `container_sizes`; if empty → `{s ∈ STD : s ≤ terminal(stops[i]).maxContainerSize}` (or all STD if that is 0) and flag `boxSizesUnknown`,
   - `sellSizes` = the sell row's `container_sizes`; if empty → `{s ∈ STD : s ≤ terminal(stops[j]).maxContainerSize}` (or all STD if that is 0) and flag `boxSizesUnknown`,
   - `shipSizes` = vehicle sizes; if null → STD and flag `shipBoxSizesUnknown`.
   - If `B` is empty, drop the haul and count it under one reason (counts are per candidate, i.e. per commodity × i × j):
     - `boxTooLarge` — every size offered at the terminals is above `boxRange.max` or not accepted by the ship ("N trades need bigger boxes than your ship takes");
-    - `boxTooSmall` — the only sizes offered are below `boxRange.min` ("N trades only come in boxes smaller than your minimum").
+    - `boxTooSmall` — the only sizes offered are below `boxRange.min` ("N trades only come in boxes smaller than your minimum");
+    - `elevator` — `B` would be non-empty without `elevatorSizes` ("N trades need boxes bigger than the cargo elevators take"). Checked before the other two reasons.
+  - When the elevator cap removed sizes that would otherwise be allowed, the haul carries `elevatorCap: { size: 24, stops: [i, j] }` (the stop indices whose cap applied), shown in the expanded line as "max 24 SCU boxes — elevator at #2 (outpost)" / "(small hangar)".
 - `qtyMax = maxFillable(cap, B)` — the largest integer ≤ `cap` that is a non-negative integer combination of sizes in `B` (unbounded-knapsack reachability DP, O(cap·|B|); cap ≤ ~12,000). If 0 (free SCU smaller than the smallest allowed box), drop it under `boxTooLarge`. `unusedScu = cap − qtyMax` is shown when > 0 (e.g. "2 SCU unused · min box 4").
 - Also compute a **box breakdown** for display: greedy largest-first decomposition of the quantity (valid because DP already proved representability; if greedy fails, use the DP backtrack). Include the total box count (e.g. `2×16 + 1×8 + 1×4 = 4 boxes`).
 
@@ -552,7 +574,8 @@ These values are a starting point. Tune them in the browser to match the warm-wh
   - Steps the ship does not accept are drawn disabled on the track. `max` cannot go above the ship's largest size unless the ship's sizes are unknown.
   - If the ship's sizes are unknown, show "Box sizes for this ship unknown — set the largest box that fits" and preset `{min: 4, max: 32}`.
   - Both handles must be usable by touch and keyboard (each handle is a `role="slider"` with arrow keys; ≥ 44 px hit area). Two overlaid native `<input type="range">` elements are acceptable.
-- **Filters**: toggles for Include illegal (on) and Include quantum-volatile (off). There are deliberately **no** stock/demand filters; reported inventory only produces warnings.
+- **Small hangar** toggle below the box slider: `Lands in a small hangar (S) — hangar elevators take max 24 SCU boxes`. Preset from the ship's `pad_type` (`S` → on, anything else or unknown → off) whenever the ship changes; the user can override it, and the choice persists. With no ship selected it is off. A short hint names the rule: "Outposts always take max 24 SCU; cities and stations without a loading dock too when you land in a small hangar."
+- **Filters**: toggles for Include illegal (on), Include quantum-volatile (off) and **Hide low & no stock** (off; hint: "Hides trades whose reported stock is low or empty — for stress-free hauling"). There is no demand filter.
 - Data controls: "Refresh prices", "Reload all data" (with timestamps).
 
 ### 7.4 ROUTE view
@@ -599,7 +622,7 @@ These values are a starting point. Tune them in the browser to match the warm-wh
 - Sort selector for all stop lists: Profit (default), ROI, Margin/SCU, Investment — all descending.
 - Empty/insufficient states:
   - fewer than 2 stops → hint linking to ROUTE;
-  - no profitable trades → "No profitable trades along this route" + count of dropped trades by reason (`boxTooLarge`, `boxTooSmall`, illegal filter, volatile filter, price-age filter).
+  - no profitable trades → "No profitable trades along this route" + count of dropped trades by reason (`boxTooLarge`, `boxTooSmall`, `elevator`, illegal filter, volatile filter, price-age filter, `lowStock` filter).
 - **Stop sections**, one per stop in route order:
   - Header: stop number + terminal display (§7.4).
   - Body: the buy options for that stop (§6.5) as a compact list. Show the top 5; a "Show N more" button expands the rest.
@@ -733,7 +756,7 @@ interface BoughtLine {
 10. Every collapsed option line shows commodity, allowed box sizes, sell stop, buy price/SCU, sell price/SCU, profit, ROI and legal/illegal; the expanded line adds quantity, box breakdown and price ages.
 11. Layout has no horizontal scroll at 360 px width; all interactive touch targets ≥ 44 px; badges ≤ 20 px tall; warm-white amber theme as in §7.1; the CALCULATE TRADES button and tab bar are centered in the content column at 360, 820 and 1440 px width.
 12. Unit-test coverage for `src/calc/**` and `src/api/mappers.ts` ≥ 90 % lines.
-13. Reported inventory never removes, caps or re-ranks a trade: a haul whose buy row has `status_buy = 1` and `scu_buy = 0` still appears with full `qtyMax` and a `NO STOCK?` badge (unit-tested).
+13. With "Hide low & no stock" off (default), reported inventory never removes, caps or re-ranks a trade: a haul whose buy row has `status_buy = 1` and `scu_buy = 0` still appears with full `qtyMax` and a `NO STOCK?` badge (unit-tested). With it on, exactly the NO STOCK? and LOW STOCK? hauls disappear and are counted as dropped.
 14. Trip mode (§7.6):
     - Tapping a line at the current stop toggles a green highlight plus ✓ and nothing else.
     - Every line has a visibly bordered `DETAILS ⌄` button. It opens and closes details independently of "bought", and never overlaps the profit.
@@ -745,12 +768,14 @@ interface BoughtLine {
 16. Every skip line shows, without expanding, how much more or less it earns than the best chain of trades via the skipped stops (§6.6); the expanded line lists that chain's legs and the difference. Lines without skips show no comparison.
 17. Add profitable stops (§6.7, §7.4): with the option on, ROUTE suggests dynamic stops only when they raise the route profit; every suggestion respects the per-gap, total, per-planetary-group and detour limits, the forward rule (backtracking only inside a planetary group), contains no city terminal and no star system the fixed stops don't use; a dynamic stop may serve a trade that spans a fixed stop (buy at X before B, sell at Y after B). Add / Add all / ✕ work as specified, the UI stays responsive while searching, and the map file is fetched at most once per game version. No UEX request is added. Accepted stops are marked `DYNAMIC`, keep counting towards all limits after the recompute (with defaults, accepting the suggested stops never leads to more than 4 dynamic stops in total or more than 1 per gap), and the ROUTE sections appear in the order of §7.4.
 18. Skip lines that earn less than their stopover chain are one compact, dimmed row (commodity, sell stop, profit, verdict, Details) and show the full layout again when expanded or marked as bought.
+19. Elevator caps (§6.3): a trade to or from a planetary outpost never uses boxes above 24 SCU; with "small hangar" on, the same holds for cities and for stations without a loading dock, while stations with a loading dock still allow 32; the toggle is preset from the ship's `pad_type` and can be overridden; trades that only work with bigger boxes are counted under `elevator`; the expanded line names the limiting stop. The same caps apply to the profitable-stops search (§6.7), which reuses haul generation.
 
 ### 8.1 Required unit tests (minimum)
 
 - `mappers`: numeric strings, `"null"`/`""` CSV handling, 0/1 booleans, ignoring non-standard box sizes.
 - `maxFillable`: `(46,{1,2,4,8,16}) = 46`, `(46,{8,16}) = 40`, `(7,{8,16}) = 0`, `(30,{24}) = 24`.
-- Candidate generation: excludes raw, non-positive margin, empty box sets; inventory statuses only set warning flags (never exclude or cap).
+- Candidate generation: excludes raw, non-positive margin, empty box sets; inventory statuses only set warning flags (never exclude or cap) unless `hideLowStock` is on, which drops exactly `status_buy` 1 and 2 and counts them under `lowStock`.
+- Elevator caps: outpost ↔ station with all sizes offered → B max 24 regardless of `smallHangar`; city and station without loading dock → 32 off / 24 on; station with loading dock → 32 either way; a UEX max below 24 stays the limit; `elevator` drop reason when only 32 SCU boxes are offered; `elevatorCap` names the limiting stops; `smallHangar` preset from `pad_type` (S → on; M, empty, null → off) and reset on ship change.
 - Box range: `{min 4, max 16}` with buy sizes `1,2,4,8,16,24,32` → B = {4,8,16}; buy sizes `1,2` with min 4 → dropped as `boxTooSmall`; sell row sizes narrow B; 46 SCU with B = {4,8,16} → 44 SCU, 2 unused.
 - Stopover comparison (§6.6): A→C vs. A→B + B→C with different commodities; a longer skip whose best chain contains a skip leg; negative delta; empty chain (profit 0, no legs); hauls without skips stay `null`.
 - Profitable stops (§6.7), with a small hand-written map fixture (nodes, groups, `travel`): suggestion only when `P` grows; detour limit at exactly `p` (allowed) and just above (rejected); forward rule rejects moving away from B across groups but allows planet → moon → station inside one group; per-group limit (two candidates on the same moon/planet group → one); per-gap and total limits and the 10-stop cap; city terminals and other-system terminals never suggested; a chain that buys at X before fixed B and sells at Y after B; unused dynamic stops dropped; deterministic tie-breaks; terminals without a map node; accepted dynamic stops count towards the per-gap, total and per-group limits and towards detour/forward of their gap, are never moved or removed by the search, and a recompute after Add / Add all with default options suggests nothing more in a full gap; stop origin survives reorder/reverse/remove and the persisted-state migration (old routes → all `fixed`).
