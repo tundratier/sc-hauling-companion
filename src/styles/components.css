@@ -410,6 +410,8 @@
 .stop__actions {
   display: flex;
   flex: none;
+  align-items: center;
+  gap: 6px;
 }
 
 .stop__actions .btn,

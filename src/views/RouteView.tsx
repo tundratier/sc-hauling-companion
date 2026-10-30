@@ -200,7 +200,7 @@ function RouteEditor() {
             }}
             onSelect={(t) => app.addStop(t.id)}
             clearOnSelect
-            placement="up"
+            placement="auto"
             emptyText="No terminal matches"
           />
         )}
@@ -271,7 +271,7 @@ export function RouteView() {
       <DataGate>
         <RouteEditor />
       </DataGate>
-      <div className="sticky-action">
+      <div className="sticky-action" data-bottom-overlay>
         <button
           type="button"
           className="btn btn--primary btn--block"
