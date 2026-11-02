@@ -365,3 +365,117 @@ describe('details button (spec rev 6)', () => {
     expect(waste.querySelector('.option__sell .badge')).toHaveTextContent('ILLEGAL')
   })
 })
+
+describe('sell elsewhere ("Can\'t sell all?", criterion 20)', () => {
+  const reminderAt = (n: number) =>
+    within(section(n)).getByRole('heading', { name: 'Sell here' }).parentElement as HTMLElement
+  const more = (n: number) =>
+    within(reminderAt(n)).getByRole('button', { name: /Can't sell all\?/ })
+
+  async function boughtScrapAtStop3() {
+    const user = userEvent.setup()
+    render(<TradesView />)
+    await user.click(toggle(line(1, 'Scrap', 3)))
+    await user.click(within(section(1)).getByRole('button', { name: 'Depart →' }))
+    return user
+  }
+
+  it('is a muted, collapsed text action on every waiting reminder', async () => {
+    await boughtScrapAtStop3()
+    const button = more(3)
+    expect(button).toHaveAttribute('aria-expanded', 'false')
+    expect(button).toHaveClass('reminder__more')
+    expect(within(reminderAt(3)).queryByText(/sell · /)).not.toBeInTheDocument()
+    expect(within(reminderAt(3)).queryByText(/No other stop/)).not.toBeInTheDocument()
+  })
+
+  it('lists the other not-yet-departed stops that buy it, with their sell price', async () => {
+    const user = await boughtScrapAtStop3()
+    await user.click(more(3))
+    expect(more(3)).toHaveAttribute('aria-expanded', 'true')
+    const choices = within(reminderAt(3)).getAllByRole('button', { name: /· sell / })
+    expect(choices).toHaveLength(1)
+    expect(choices[0]).toHaveTextContent('#2 TDD Area 18 · sell 3,100 /SCU (+146 vs. buy)')
+    await user.click(more(3))
+    expect(more(3)).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  it('moves the reminder, shows where it came from and updates ON BOARD', async () => {
+    const user = await boughtScrapAtStop3()
+    await user.click(more(3))
+    await user.click(within(reminderAt(3)).getByRole('button', { name: /#2 TDD Area 18/ }))
+    expect(within(section(3)).queryByText('Sell here')).not.toBeInTheDocument()
+    const moved = reminderAt(2)
+    expect(moved).toHaveTextContent('Scrap')
+    expect(moved).toHaveTextContent('bought #1 ARC-L1 @ 2,954 → sell @ 3,100 /SCU')
+    expect(moved).toHaveTextContent('moved from #3')
+    expect(useAppStore.getState().trip.bought[0]).toMatchObject({
+      sellStop: 2,
+      sellAt: 1,
+      unitSellAt: 3100,
+    })
+    expect(screen.getByRole('region', { name: 'Summary' })).toHaveTextContent(
+      'On board: Scrap → #2',
+    )
+  })
+
+  it('offers the original stop as the way back while it is not departed', async () => {
+    const user = await boughtScrapAtStop3()
+    await user.click(more(3))
+    await user.click(within(reminderAt(3)).getByRole('button', { name: /#2 TDD Area 18/ }))
+    await user.click(more(2))
+    const back = within(reminderAt(2)).getByRole('button', { name: /#3 CBD Lorville/ })
+    expect(back).toHaveTextContent('sell 3,600 /SCU')
+    expect(back).toHaveTextContent('original stop')
+    await user.click(back)
+    expect(reminderAt(3)).toHaveTextContent('→ sell @ 3,600 /SCU')
+    expect(reminderAt(3)).not.toHaveTextContent('moved from')
+    expect(useAppStore.getState().trip.bought[0]).not.toHaveProperty('sellAt')
+  })
+
+  it('counts the sale at the new stop in the departed summary', async () => {
+    const user = await boughtScrapAtStop3()
+    await user.click(more(3))
+    await user.click(within(reminderAt(3)).getByRole('button', { name: /#2 TDD Area 18/ }))
+    await user.click(within(section(2)).getByRole('button', { name: 'Depart →' }))
+    expect(section(2)).toHaveTextContent('Sold Scrap')
+    // nothing left to sell at the original stop
+    expect(within(section(3)).queryByText('Sell here')).not.toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Summary' })).not.toHaveTextContent('On board')
+  })
+
+  it('says so when no other stop buys the commodity', async () => {
+    const user = userEvent.setup()
+    render(<TradesView />)
+    await user.click(toggle(line(1, 'Steel')))
+    await user.click(within(section(1)).getByRole('button', { name: 'Depart →' }))
+    await user.click(more(3))
+    expect(within(reminderAt(3)).getByText('No other stop on this route buys Steel.')).toBeVisible()
+    expect(within(reminderAt(3)).queryByRole('button', { name: /· sell / })).not.toBeInTheDocument()
+  })
+
+  it('shows a demand warning badge on an option', async () => {
+    setPrices([
+      ...offers.filter((o) => !(o.terminalId === 2 && o.priceSell > 0)),
+      sellOffer(1, 2, 3100, { statusSell: 7 }),
+    ])
+    const user = await boughtScrapAtStop3()
+    await user.click(more(3))
+    expect(within(reminderAt(3)).getByText('NO DEMAND?')).toBeInTheDocument()
+  })
+
+  it('has no action on reminders whose stop is departed or on lines not yet departed', async () => {
+    const user = userEvent.setup()
+    render(<TradesView />)
+    await user.click(toggle(line(1, 'Scrap', 3)))
+    expect(screen.queryByRole('button', { name: /Can't sell all\?/ })).not.toBeInTheDocument()
+  })
+
+  it('keeps a moved reminder after a reload (persisted with the trip)', async () => {
+    const user = await boughtScrapAtStop3()
+    await user.click(more(3))
+    await user.click(within(reminderAt(3)).getByRole('button', { name: /#2 TDD Area 18/ }))
+    const saved = JSON.parse(localStorage.getItem('shc:v1') ?? '{}')
+    expect(saved.state.trip.bought[0]).toMatchObject({ sellAt: 1, unitSellAt: 3100 })
+  })
+})

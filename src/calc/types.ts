@@ -17,7 +17,10 @@ export interface CalcOptions {
   includeVolatileQt: boolean
   /** Default null (no filter); ages are always shown. */
   maxPriceAgeDays: number | null
-  /** Default false — opt-in: hides hauls with a NO STOCK? or LOW STOCK? buy row (reported data). */
+  /**
+   * Default false — opt-in: hides hauls with a NO/LOW STOCK? buy row or a NO/LOW DEMAND? sell row
+   * (reported data). Persisted as `hideLowStock`.
+   */
   hideLowStock: boolean
 }
 
@@ -154,8 +157,10 @@ export interface DroppedCounts {
   illegal: number
   volatileQt: number
   priceAge: number
-  /** Reported stock is low or empty and the "Hide low & no stock" filter is on. */
+  /** Reported buy stock is low or empty and "Hide low stock & demand" is on. */
   lowStock: number
+  /** Reported sell demand is low or empty (and the buy side is fine) with the filter on. */
+  lowDemand: number
   /** Only sizes above the cargo elevator limit are on offer. */
   elevator: number
 }
@@ -178,6 +183,7 @@ export const EMPTY_RESULT: CalcResult = {
     volatileQt: 0,
     priceAge: 0,
     lowStock: 0,
+    lowDemand: 0,
     elevator: 0,
   },
 }

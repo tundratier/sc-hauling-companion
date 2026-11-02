@@ -207,12 +207,46 @@ describe('stock filter (hideLowStock)', () => {
     expect(gen(terminals, {}, offers(2)).hauls[0].flags.lowStock).toBe(true)
   })
 
-  it('does not filter demand warnings', () => {
-    const { hauls } = gen(terminals, { options: { hideLowStock: true } }, [
-      buyOffer(1, 1, 100),
-      sellOffer(1, 2, 150, { statusSell: 7 }),
-    ])
-    expect(hauls).toHaveLength(1)
-    expect(hauls[0].flags.noDemand).toBe(true)
+  describe('sell-side demand (revision 15)', () => {
+    const demand = (statusSell: number, statusBuy = 4) => [
+      buyOffer(1, 1, 100, { statusBuy }),
+      sellOffer(1, 2, 150, { statusSell }),
+    ]
+    const on = { options: { hideLowStock: true } }
+
+    it.each([6, 7])('drops status_sell %i and counts it under lowDemand', (status) => {
+      const { hauls, dropped } = gen(terminals, on, demand(status))
+      expect(hauls).toEqual([])
+      expect(dropped).toMatchObject({ lowDemand: 1, lowStock: 0 })
+    })
+
+    it.each([0, 1, 2, 3, 4, 5])('keeps status_sell %i', (status) => {
+      const { hauls, dropped } = gen(terminals, on, demand(status))
+      expect(hauls).toHaveLength(1)
+      expect(dropped.lowDemand).toBe(0)
+    })
+
+    it('counts a haul with both warnings under lowStock', () => {
+      const { dropped } = gen(terminals, on, demand(7, 1))
+      expect(dropped).toMatchObject({ lowStock: 1, lowDemand: 0 })
+    })
+
+    it('does not use scu_sell', () => {
+      // plenty or no reported sell amount makes no difference to the filter
+      for (const scuSell of [0, 5, 500]) {
+        const { hauls } = gen(terminals, on, [
+          buyOffer(1, 1, 100),
+          sellOffer(1, 2, 150, { statusSell: 4, scuSell }),
+        ])
+        expect(hauls).toHaveLength(1)
+      }
+    })
+
+    it('leaves demand warnings alone while the filter is off', () => {
+      const [h] = gen(terminals, {}, demand(7)).hauls
+      expect(h.flags.noDemand).toBe(true)
+      expect(h.qtyMax).toBe(64)
+      expect(gen(terminals, {}, demand(6)).hauls[0].flags.lowDemand).toBe(true)
+    })
   })
 })

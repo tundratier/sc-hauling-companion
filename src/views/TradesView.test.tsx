@@ -545,6 +545,7 @@ describe('droppedLines', () => {
     volatileQt: 0,
     priceAge: 0,
     lowStock: 0,
+    lowDemand: 0,
     elevator: 0,
   }
 
@@ -557,10 +558,11 @@ describe('droppedLines', () => {
     ])
   })
 
-  it('names the elevator and low-stock reasons', () => {
-    expect(droppedLines({ ...none, elevator: 1, lowStock: 4 })).toEqual([
+  it('names the elevator, low-stock and low-demand reasons', () => {
+    expect(droppedLines({ ...none, elevator: 1, lowStock: 4, lowDemand: 2 })).toEqual([
       '1 trade need boxes bigger than the cargo elevators take',
       '4 hidden by the low-stock filter',
+      '2 hidden by the low-demand filter',
     ])
   })
 })

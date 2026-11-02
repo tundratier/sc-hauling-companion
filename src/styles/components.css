@@ -1019,7 +1019,7 @@
   overflow-wrap: anywhere;
 }
 
-.reminder > strong {
+.reminder strong {
   color: var(--sel);
 }
 
@@ -1225,4 +1225,85 @@ select.input:disabled {
 
 .option--compact .option__sell {
   white-space: nowrap;
+}
+
+/* "Can't sell all?" (SPEC §7.6): a muted text action, collapsed by default */
+.reminder__more {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--tap);
+  /* ≥ 44 px hit area via padding, no border, quiet */
+  padding: 0 8px 0 0;
+  border: 0;
+  background: transparent;
+  color: var(--amber-dim);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
+.reminder__more:hover,
+.reminder__more:focus-visible {
+  color: var(--amber);
+}
+
+.reminder__chevron {
+  display: block;
+  flex: none;
+  transition: transform var(--transition);
+}
+
+.reminder__more[aria-expanded='true'] .reminder__chevron {
+  transform: rotate(180deg);
+}
+
+/* Wide screens: the action sits at the end of the reminder line, the options below both */
+@media (min-width: 600px) {
+  .reminder {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 12px;
+  }
+
+  .reminder__more {
+    padding: 0 0 0 8px;
+  }
+
+  .reminder__options {
+    grid-column: 1 / -1;
+  }
+}
+
+.reminder__moved {
+  color: var(--amber-dim);
+}
+
+.reminder__options {
+  margin-top: 2px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--line);
+}
+
+.reminder__choices {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.reminder__choice {
+  display: block;
+  width: 100%;
+  min-height: var(--tap);
+  padding: 6px 10px;
+  text-align: left;
+  line-height: 1.35;
+}
+
+.reminder__delta {
+  color: var(--amber-dim);
 }
