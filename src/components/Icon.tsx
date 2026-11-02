@@ -1,4 +1,4 @@
-export type IconName = 'ship' | 'route' | 'trades' | 'refresh' | 'expand' | 'collapse'
+export type IconName = 'ship' | 'route' | 'trades' | 'refresh' | 'expand' | 'collapse' | 'close'
 
 const PATHS: Record<IconName, string> = {
   // simple stroked glyphs on a 24 px grid
@@ -10,6 +10,7 @@ const PATHS: Record<IconName, string> = {
   // four outward corners (enter full screen) / four inward corners (exit)
   expand: 'M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5',
   collapse: 'M9 4v5H4M20 9h-5V4M15 20v-5h5M4 15h5v5',
+  close: 'M6 6l12 12M18 6 6 18',
 }
 
 export function Icon({ name }: { name: IconName }) {

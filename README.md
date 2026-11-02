@@ -43,6 +43,23 @@ docker compose run --rm terminal-map --compile   # raw -> public/terminal-map (o
 docker compose run --rm terminal-map --check     # fail if the committed files differ from a fresh compile
 ```
 
+## PWA (installable, offline shell)
+
+The production build ships a service worker (`vite-plugin-pwa`, Workbox `generateSW`) and a web app
+manifest, see [`docs/SPEC.md`](docs/SPEC.md) §5.5. The worker precaches the app shell and the
+static terminal maps; UEX API calls never go through it. There is no worker in the dev server. A new
+version waits until the user taps RELOAD in the update banner. The same build works under
+`/sc-hauling-companion/` (Pages) and `/` (Docker `app` image, whose nginx serves `sw.js`,
+`index.html` and the manifest with `Cache-Control: no-cache`).
+
+The icons in `public/` (`pwa-*.png`, `maskable-icon-512x512.png`, `apple-touch-icon-180x180.png`) are
+generated from `public/favicon.svg` with [`@vite-pwa/assets-generator`](https://github.com/vite-pwa/assets-generator)
+(`pwa-assets.config.ts`, preset `minimal-2023`) and committed. Regenerate them after changing the favicon:
+
+```bash
+docker compose run --rm dev npm run generate-pwa-assets
+```
+
 ## Deployment
 
 Every push to `master` (i.e. every git flow release or hotfix) runs

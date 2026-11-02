@@ -248,6 +248,11 @@
   color: var(--warn);
 }
 
+/* New version waiting: text plus two 44 px buttons, so the banner needs less padding of its own */
+.banner--update {
+  padding-block: 4px;
+}
+
 .stack {
   display: flex;
   flex-direction: column;
