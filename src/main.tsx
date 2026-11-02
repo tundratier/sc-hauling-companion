@@ -9,6 +9,9 @@ import './styles/base.css'
 import './styles/layout.css'
 import './styles/components.css'
 import App from './App.tsx'
+import { initInstallPrompt } from './pwa/installPrompt.ts'
+
+initInstallPrompt()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

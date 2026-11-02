@@ -5,6 +5,7 @@ import { DataGate } from '../components/DataGate'
 import { NumberStepper } from '../components/NumberStepper'
 import { BoxRangeSlider } from '../components/BoxRangeSlider'
 import { useNow } from '../hooks/useNow'
+import { InstallButton } from '../pwa/InstallButton'
 import { searchVehicles } from '../domain/search'
 import type { Vehicle } from '../domain/types'
 import { boxRangeText, formatAgeMs, formatClock, formatInt } from '../lib/format'
@@ -210,6 +211,7 @@ function DataControls() {
         >
           Reload all data
         </button>
+        <InstallButton />
       </div>
       <p className="muted fineprint">
         Refresh is limited to once per {PRICES_REFRESH_COOLDOWN_MS / 1000} s — server data updates
@@ -230,7 +232,7 @@ export function ShipView() {
       </DataGate>
       <footer className="app-footer">
         Data: UEX Corp (uexcorp.space) · community-sourced, may be inaccurate · Not affiliated with
-        Cloud Imperium Games.
+        Cloud Imperium Games · v{APP_VERSION}
       </footer>
     </section>
   )

@@ -46,4 +46,9 @@ describe('App shell', () => {
     expect(screen.getByText(/Data: UEX Corp/)).toBeInTheDocument()
     expect(screen.getByText(/Not affiliated with Cloud Imperium Games/)).toBeInTheDocument()
   })
+
+  it('shows the build version in the footer', () => {
+    render(<App />)
+    expect(screen.getByText(new RegExp(`· v${APP_VERSION}$`))).toBeInTheDocument()
+  })
 })
