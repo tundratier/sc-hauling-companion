@@ -19,6 +19,13 @@ export interface BoughtLine {
   illegal: boolean
   /** Position in the stop's ranked list when it was marked (to keep it in place later). */
   rank: number
+  /**
+   * "Can't sell all?" (§7.6): the reminder was moved to this stop. Absent on lines that were
+   * never moved (and on lines persisted before the feature existed). `sellStop` stays as marked.
+   */
+  sellAt?: number
+  /** Snapshot of the sell price per SCU at `sellAt`; set together with `sellAt`. */
+  unitSellAt?: number
 }
 
 export interface TripState {
@@ -50,6 +57,44 @@ export function snapshotOf(haul: Haul, rank: number): BoughtLine {
 }
 
 export const isDeparted = (state: TripState, stop: number): boolean => stop < state.currentStop
+
+/** Where the line is sold: the stop it was moved to, else the one it was marked for. */
+export const sellStopOf = (line: BoughtLine): number => line.sellAt ?? line.sellStop
+
+/** Sell price per SCU at the effective sell stop (snapshot). */
+export const unitSellOf = (line: BoughtLine): number => line.unitSellAt ?? line.unitSell
+
+/** The reminder sits at another stop than the one it was marked for. */
+export const isMoved = (line: BoughtLine): boolean => line.sellAt !== undefined
+
+/**
+ * Move a sell reminder to another stop ("Can't sell all?", §7.6). The whole line moves — there
+ * is no quantity tracking. `sellStop` stays (for "moved from #n" and the way back); moving back
+ * to it clears `sellAt` / `unitSellAt`. Only reminders that are waiting (bought at a departed
+ * stop, sell stop not departed) can move, only to a stop that is not departed and lies after the
+ * buy stop. Anything else returns the state unchanged.
+ */
+export function moveReminder(
+  state: TripState,
+  key: string,
+  stop: number,
+  unitSell: number,
+): TripState {
+  const line = state.bought.find((b) => b.key === key)
+  if (!line || !isDeparted(state, line.buyStop) || isDeparted(state, sellStopOf(line))) return state
+  if (!Number.isInteger(stop) || isDeparted(state, stop) || stop <= line.buyStop) return state
+  if (stop === sellStopOf(line)) return state
+  const moved: BoughtLine =
+    stop === line.sellStop
+      ? omitMove(line)
+      : { ...line, sellAt: stop, unitSellAt: Number.isFinite(unitSell) ? unitSell : line.unitSell }
+  return { ...state, bought: state.bought.map((b) => (b.key === key ? moved : b)) }
+}
+
+function omitMove(line: BoughtLine): BoughtLine {
+  const { sellAt: _sellAt, unitSellAt: _unitSellAt, ...rest } = line
+  return rest
+}
 
 export const isBought = (state: TripState, key: string): boolean =>
   state.bought.some((b) => b.key === key)
@@ -95,17 +140,18 @@ export const boughtAt = (state: TripState, stop: number): BoughtLine[] =>
   state.bought.filter((b) => b.buyStop === stop)
 
 /**
- * Sell reminders at stop `stop`: lines bought at a departed stop that sell here. Departing
+ * Sell reminders at stop `stop`: lines bought at a departed stop whose effective sell stop is
+ * here (moved reminders included). Departing
  * `stop` ends its reminders (they count as "sold" in the departed summary).
  */
 export function remindersAt(state: TripState, stop: number): BoughtLine[] {
   if (isDeparted(state, stop)) return []
-  return state.bought.filter((b) => b.sellStop === stop && isDeparted(state, b.buyStop))
+  return state.bought.filter((b) => sellStopOf(b) === stop && isDeparted(state, b.buyStop))
 }
 
 /** Lines from departed stops that are not sold yet (their sell stop is not departed). */
 export const onBoard = (state: TripState): BoughtLine[] =>
-  state.bought.filter((b) => isDeparted(state, b.buyStop) && !isDeparted(state, b.sellStop))
+  state.bought.filter((b) => isDeparted(state, b.buyStop) && !isDeparted(state, sellStopOf(b)))
 
 /** What happened at a departed stop: what was bought there and what was sold there. */
 export function departedSummary(
@@ -114,7 +160,7 @@ export function departedSummary(
 ): { bought: BoughtLine[]; sold: BoughtLine[] } {
   return {
     bought: boughtAt(state, stop),
-    sold: state.bought.filter((b) => b.sellStop === stop && b.buyStop < stop),
+    sold: state.bought.filter((b) => sellStopOf(b) === stop && b.buyStop < stop),
   }
 }
 

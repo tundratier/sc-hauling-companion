@@ -146,10 +146,11 @@ function ShipForm() {
             checked={app.hideLowStock}
             onChange={(e) => app.setHideLowStock(e.target.checked)}
           />
-          <span>Hide low &amp; no stock</span>
+          <span>Hide low stock &amp; demand</span>
         </label>
         <p className="muted fineprint">
-          Hides trades whose reported stock is low or empty — for stress-free hauling
+          Hides trades where the buy terminal reports low or no stock, or the sell terminal low or
+          no demand — for stress-free hauling
         </p>
         <div>
           <label className="label" htmlFor="max-age">

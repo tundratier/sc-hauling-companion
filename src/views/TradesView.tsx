@@ -8,7 +8,8 @@ import { boxRangeText, formatAgeMs, formatClock, formatInt } from '../lib/format
 import { shortName } from '../lib/terminalNames'
 import { useAppStore } from '../state/useAppStore'
 import { useDataStore } from '../state/useDataStore'
-import { canComplete, clampTrip, inProgress, onBoard } from '../trip/tripReducer'
+import { sellOptions } from '../trip/sellElsewhere'
+import { canComplete, clampTrip, inProgress, onBoard, sellStopOf } from '../trip/tripReducer'
 
 const SORTS: { key: HaulSortKey; label: string }[] = [
   { key: 'profit', label: 'Profit' },
@@ -36,11 +37,12 @@ export function droppedLines(d: DroppedCounts): string[] {
   if (d.volatileQt > 0) lines.push(`${d.volatileQt} hidden by the quantum-volatile filter`)
   if (d.priceAge > 0) lines.push(`${d.priceAge} hidden by the price-age filter`)
   if (d.lowStock > 0) lines.push(`${d.lowStock} hidden by the low-stock filter`)
+  if (d.lowDemand > 0) lines.push(`${d.lowDemand} hidden by the low-demand filter`)
   return lines
 }
 
 function TradesContent() {
-  const { input, result, vehicle, ready, now } = useTrades()
+  const { input, result, data, vehicle, ready, now } = useTrades()
   const setTab = useAppStore((s) => s.setTab)
   const staticData = useDataStore((s) => s.staticData!.data)
   const prices = useDataStore((s) => s.prices)
@@ -52,6 +54,7 @@ function TradesContent() {
   const toggleBought = useAppStore((s) => s.toggleBought)
   const departStop = useAppStore((s) => s.departStop)
   const undoDepart = useAppStore((s) => s.undoDepart)
+  const moveReminder = useAppStore((s) => s.moveReminder)
   const completeRoute = useAppStore((s) => s.completeRoute)
   const trip = clampTrip(rawTrip, input.stops.length)
 
@@ -84,7 +87,7 @@ function TradesContent() {
       {board.length > 0 && (
         <p className="num">
           <span className="label">On board:</span>{' '}
-          {board.map((b) => `${b.commodityName} → #${b.sellStop + 1}`).join(', ')}
+          {board.map((b) => `${b.commodityName} → #${sellStopOf(b) + 1}`).join(', ')}
         </p>
       )}
       {prices && (
@@ -206,6 +209,15 @@ function TradesContent() {
             onToggle={toggleBought}
             onDepart={departStop}
             onUndo={undoDepart}
+            sellOptionsFor={(line) =>
+              data
+                ? sellOptions(trip, line, input.stops, data, {
+                    nowSec: Math.floor(now / 1000),
+                    maxPriceAgeDays: input.options.maxPriceAgeDays,
+                  })
+                : []
+            }
+            onMoveReminder={moveReminder}
           />
         ))}
         {canComplete(trip, input.stops.length) && (

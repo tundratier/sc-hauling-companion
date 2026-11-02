@@ -368,6 +368,7 @@ describe('calculate', () => {
       volatileQt: 0,
       priceAge: 0,
       lowStock: 0,
+      lowDemand: 0,
       elevator: 0,
     })
   })
