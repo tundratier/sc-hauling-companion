@@ -45,7 +45,7 @@ export function filterReason(
   sell: PriceOffer,
   options: CalcOptions,
   nowSec: number,
-): 'illegal' | 'volatileQt' | 'priceAge' | 'lowStock' | null {
+): 'illegal' | 'volatileQt' | 'priceAge' | 'lowStock' | 'lowDemand' | null {
   if (!options.includeIllegal && commodity.isIllegal) return 'illegal'
   if (!options.includeVolatileQt && commodity.isVolatileQt) return 'volatileQt'
   if (options.maxPriceAgeDays !== null) {
@@ -60,8 +60,12 @@ export function filterReason(
       return 'priceAge'
     }
   }
-  // opt-in stock filter: the buy row reports NO STOCK? (1) or LOW STOCK? (2)
-  if (options.hideLowStock && (buy.statusBuy === 1 || buy.statusBuy === 2)) return 'lowStock'
+  // opt-in inventory filter (§6.3): the buy row reports NO/LOW STOCK? (status 1, 2) → lowStock;
+  // else the sell row reports NO/LOW DEMAND? (status 7, 6) → lowDemand. scu_sell is not used.
+  if (options.hideLowStock) {
+    if (buy.statusBuy === 1 || buy.statusBuy === 2) return 'lowStock'
+    if (sell.statusSell === 6 || sell.statusSell === 7) return 'lowDemand'
+  }
   return null
 }
 
@@ -146,6 +150,7 @@ export function generateCandidates(
     volatileQt: 0,
     priceAge: 0,
     lowStock: 0,
+    lowDemand: 0,
     elevator: 0,
   }
   const hauls: Haul[] = []

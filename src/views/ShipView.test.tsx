@@ -147,16 +147,16 @@ describe('ShipView', () => {
     render(<ShipView />)
     expect(screen.getByRole('checkbox', { name: 'Include illegal commodities' })).toBeChecked()
     expect(screen.getByRole('checkbox', { name: /quantum-volatile/ })).not.toBeChecked()
-    expect(screen.getByRole('checkbox', { name: 'Hide low & no stock' })).not.toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'Hide low stock & demand' })).not.toBeChecked()
     expect(
       screen.getByText(
-        'Hides trades whose reported stock is low or empty — for stress-free hauling',
+        'Hides trades where the buy terminal reports low or no stock, or the sell terminal low or no demand — for stress-free hauling',
       ),
     ).toBeInTheDocument()
-    expect(screen.queryByText(/demand/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/^No demand|^Hide low demand/i)).not.toBeInTheDocument() // one combined filter, no separate demand toggle
     await user.click(screen.getByRole('checkbox', { name: 'Include illegal commodities' }))
     await user.click(screen.getByRole('checkbox', { name: /quantum-volatile/ }))
-    await user.click(screen.getByRole('checkbox', { name: 'Hide low & no stock' }))
+    await user.click(screen.getByRole('checkbox', { name: 'Hide low stock & demand' }))
     expect(useAppStore.getState()).toMatchObject({
       includeIllegal: false,
       includeVolatileQt: true,

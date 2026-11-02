@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { AppHeader } from './components/AppHeader'
 import { OfflineBanner } from './components/OfflineBanner'
 import { TabBar, panelId, tabId } from './components/TabBar'
+import { UpdateBanner } from './pwa/UpdateBanner'
 import { useAppStore } from './state/useAppStore'
 import { useDataStore } from './state/useDataStore'
 import { RouteView } from './views/RouteView'
@@ -41,6 +42,7 @@ export default function App() {
       <main className="app-main" id={panelId(tab)} role="tabpanel" aria-labelledby={tabId(tab)}>
         <div className="stack">
           <OfflineBanner />
+          <UpdateBanner />
           {tab === 'ship' && <ShipView />}
           {tab === 'route' && <RouteView />}
           {tab === 'trades' && <TradesView />}

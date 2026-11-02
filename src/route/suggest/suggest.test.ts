@@ -860,3 +860,14 @@ describe('elevator caps and stock filter reach the search (revision 14)', () => 
     ).toBe('none')
   })
 })
+
+describe('the inventory filter also covers sell-side demand in the search (revision 15)', () => {
+  it('does not suggest a stop whose sell terminal reports no demand when the filter is on', () => {
+    const offers: Offers = [buyOffer(1, 3, 100), sellOffer(1, 2, 150, { statusSell: 7 })]
+    const args = { nodes: [A, X, B], offers, fixed: [1, 2] }
+    expect(run(args).kind).toBe('ok')
+    expect(
+      run({ ...args, calc: { options: { ...DEFAULT_CALC_OPTIONS, hideLowStock: true } } }).kind,
+    ).toBe('none')
+  })
+})

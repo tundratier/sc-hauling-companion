@@ -22,6 +22,10 @@ import {
   inProgress,
   isBought,
   isDeparted,
+  isMoved,
+  moveReminder,
+  sellStopOf,
+  unitSellOf,
   onBoard,
   remindersAt,
   sameRoute,
@@ -280,5 +284,110 @@ describe('stopItems (snapshots survive price refreshes)', () => {
     expect(items[0].key).toBe('b')
     expect(items.at(-1)?.key).toBe('a')
     expect(stopItems([], [b]).map((i) => i.key)).toEqual(['b'])
+  })
+})
+
+describe('moveReminder ("Can\'t sell all?", §7.6)', () => {
+  // Scrap bought at 0 (2,954), marked to sell at stop 2; we are at stop 1 with stop 0 departed
+  const waiting = (): TripState => depart(toggleBought(INITIAL_TRIP, line('Scrap', 0, 2)), N)
+
+  it('moves the reminder to a later stop, keeping the original sell stop and the key', () => {
+    const moved = moveReminder(waiting(), '0:1:2', 3, 3500)
+    const [b] = moved.bought
+    expect(b).toMatchObject({ key: '0:1:2', sellStop: 2, sellAt: 3, unitSellAt: 3500 })
+    expect(b.unitSell).toBe(3600) // the original snapshot stays
+    expect(sellStopOf(b)).toBe(3)
+    expect(unitSellOf(b)).toBe(3500)
+    expect(isMoved(b)).toBe(true)
+    expect(remindersAt(moved, 2)).toEqual([])
+    expect(remindersAt(moved, 3).map((r) => r.key)).toEqual(['0:1:2'])
+  })
+
+  it('may sell earlier instead, at a stop that is not departed yet', () => {
+    const moved = moveReminder(waiting(), '0:1:2', 1, 3100) // current stop is 1
+    expect(remindersAt(moved, 1)).toHaveLength(1)
+    expect(remindersAt(moved, 2)).toEqual([])
+  })
+
+  it('moves back to the original stop, which clears sellAt and unitSellAt', () => {
+    const moved = moveReminder(waiting(), '0:1:2', 3, 3500)
+    const back = moveReminder(moved, '0:1:2', 2, 3600)
+    expect(back.bought[0]).not.toHaveProperty('sellAt')
+    expect(back.bought[0]).not.toHaveProperty('unitSellAt')
+    expect(isMoved(back.bought[0])).toBe(false)
+    expect(back.bought[0]).toEqual(line('Scrap', 0, 2))
+  })
+
+  it('moves the whole line: one reminder, no quantity', () => {
+    const moved = moveReminder(waiting(), '0:1:2', 3, 3500)
+    expect(moved.bought).toHaveLength(1)
+    expect(onBoard(moved).map(sellStopOf)).toEqual([3])
+  })
+
+  it.each([
+    ['a departed stop', 0, 3500],
+    ['the stop it is already at', 2, 3600],
+    ['a stop that is not a whole number', 1.5, 1],
+  ])('ignores a move to %s', (_name, stop, price) => {
+    const state = waiting()
+    expect(moveReminder(state, '0:1:2', stop, price)).toBe(state)
+  })
+
+  it('ignores unknown keys and lines that are not waiting yet', () => {
+    const state = waiting()
+    expect(moveReminder(state, 'nope', 3, 1)).toBe(state)
+    // bought at the current stop: not a reminder yet
+    const marking = toggleBought(INITIAL_TRIP, line('Scrap', 0, 2))
+    expect(moveReminder(marking, '0:1:2', 3, 3500)).toBe(marking)
+  })
+
+  it('cannot move a reminder whose stop is already departed (it was sold there)', () => {
+    let s = waiting()
+    s = depart(s, N) // departs stop 1
+    s = depart(s, N) // departs stop 2: the Scrap reminder there ends
+    expect(moveReminder(s, '0:1:2', 3, 3500)).toBe(s)
+  })
+
+  it('a moved reminder survives departing its original stop and ends at the new one', () => {
+    let s = moveReminder(waiting(), '0:1:2', 3, 3500)
+    s = depart(s, N)
+    s = depart(s, N) // stop 2 is departed; the reminder waits at 3
+    expect(remindersAt(s, 3)).toHaveLength(1)
+    expect(onBoard(s).map(sellStopOf)).toEqual([3])
+    expect(departedSummary(s, 2).sold).toEqual([])
+    expect(summaryText(s, 2)).toBe('Nothing bought')
+  })
+
+  it('counts the sale at the effective stop in the departed summary', () => {
+    // moved from 2 to 1: selling at stop 1, so departing stop 1 reports "Sold Scrap"
+    let s = moveReminder(waiting(), '0:1:2', 1, 3100)
+    s = depart(s, N)
+    expect(departedSummary(s, 1).sold.map((l) => l.commodityName)).toEqual(['Scrap'])
+    expect(summaryText(s, 1)).toBe('Nothing bought · Sold Scrap')
+    expect(summaryText(s, 2)).not.toContain('Sold')
+    expect(onBoard(s)).toEqual([])
+  })
+
+  it('keeps the move when a departure is undone', () => {
+    let s = moveReminder(waiting(), '0:1:2', 3, 3500)
+    s = undo(s)
+    s = depart(s, N)
+    expect(sellStopOf(s.bought[0])).toBe(3)
+  })
+
+  it('loads lines persisted before the move existed unchanged', () => {
+    const old: BoughtLine = JSON.parse(JSON.stringify(line('Scrap', 0, 2)))
+    expect(old.sellAt).toBeUndefined()
+    const state: TripState = { currentStop: 1, bought: [old] }
+    expect(sellStopOf(old)).toBe(2)
+    expect(unitSellOf(old)).toBe(3600)
+    expect(isMoved(old)).toBe(false)
+    expect(remindersAt(state, 2)).toHaveLength(1)
+    expect(onBoard(state)).toHaveLength(1)
+  })
+
+  it('survives a JSON round trip (persisted with the trip)', () => {
+    const moved = moveReminder(waiting(), '0:1:2', 3, 3500)
+    expect(JSON.parse(JSON.stringify(moved))).toEqual(moved)
   })
 })

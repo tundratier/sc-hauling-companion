@@ -12,6 +12,7 @@ import {
   INITIAL_TRIP,
   complete,
   depart,
+  moveReminder,
   sameRoute,
   toggleBought,
   undo,
@@ -89,6 +90,8 @@ export interface AppState {
   replaceStops: (stops: number[], origins: StopOrigin[]) => void
   setSuggestOptions: (options: Partial<SuggestOptions>) => void
   toggleBought: (line: BoughtLine) => void
+  /** Move a waiting sell reminder to another stop ("Can't sell all?", §7.6). */
+  moveReminder: (key: string, stop: number, unitSell: number) => void
   departStop: () => void
   undoDepart: () => void
   /** Finish the route: clear the stops, reset the trip and open ROUTE. */
@@ -220,6 +223,8 @@ export const useAppStore = create<AppState>()(
       setSuggestOptions: (options) =>
         set((s) => ({ suggest: normalizeSuggestOptions({ ...s.suggest, ...options }) })),
       toggleBought: (line) => set((s) => ({ trip: toggleBought(s.trip, line) })),
+      moveReminder: (key, stop, unitSell) =>
+        set((s) => ({ trip: moveReminder(s.trip, key, stop, unitSell) })),
       departStop: () => set((s) => ({ trip: depart(s.trip, s.stops.length) })),
       undoDepart: () => set((s) => ({ trip: undo(s.trip) })),
       completeRoute: () => set({ stops: [], origins: [], trip: complete(), tab: 'route' }),

@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { buildPriceIndexes, buildStaticIndexes } from '../api/indexes'
-import { calculate, EMPTY_RESULT, type CalcInput, type CalcResult } from '../calc'
+import { calculate, EMPTY_RESULT, type CalcData, type CalcInput, type CalcResult } from '../calc'
 import type { Vehicle } from '../domain/types'
 import { useAppStore } from '../state/useAppStore'
 import { useDataStore } from '../state/useDataStore'
@@ -9,6 +9,8 @@ import { useNow } from './useNow'
 export interface Trades {
   input: CalcInput
   result: CalcResult
+  /** Lookup tables behind the result (null until static data and prices are loaded). */
+  data: CalcData | null
   vehicle: Vehicle | null
   /** Static data and prices are both available. */
   ready: boolean
@@ -82,5 +84,5 @@ export function useTrades(): Trades {
     [input, indexes, nowSec],
   )
 
-  return { input, result, vehicle, ready: indexes !== null, now }
+  return { input, result, data: indexes, vehicle, ready: indexes !== null, now }
 }

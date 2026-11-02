@@ -6,6 +6,17 @@ This document is the single source of truth for implementing v1.0. It is written
 
 ### Revision history
 
+**Revision 16 (2026-11-02)** — **installable PWA**:
+- A service worker serves the app shell offline. The UEX data stays with the IndexedDB cache, and the worker never caches API calls (§5.5).
+- A manifest and icons generated from the favicon (§5.5).
+- An update banner with `RELOAD`, the app version in the footer, and the installed-app note (§7.2).
+- An `INSTALL APP` button in SHIP (§7.3).
+- §7.7 now requires offline use, and the PWA item leaves §10. Acceptance criterion 21, tests (§8.1).
+
+**Revision 15 (2026-11-02)** — **sell limits**, after a station took only 48 of 512 SCU Copper on a real run:
+- "Hide low & no stock" becomes **"Hide low stock & demand"**: with it on, trades whose sell terminal reports low or no demand (`status_sell` 6/7) are hidden too, counted as `lowDemand` (§6.3, §7.3).
+- Trip mode: a sell reminder can be **moved to another stop** of the route that buys the commodity, behind a muted, collapsed `Can't sell all?` action (§7.6). Acceptance criterion 20, tests (§8.1).
+
 **Revision 14 (2026-10-30)** — **cargo elevator limits** and a **stock filter**:
 - Every terminal gets an elevator box cap from rules the product owner confirmed (UEX has no data on hangar elevators): planetary terminals outside cities 24 SCU; cities and stations 24 SCU for ships that land in a small (S) hangar, except stations with an external loading dock. The cap applies at the buy and the sell terminal (§6.3).
 - SHIP: a "small hangar" toggle, preset from the ship's UEX `pad_type`, and an opt-in "Hide low & no stock" filter (§7.3). This is the first and only filter on reported inventory, deliberately opt-in (§6.1).
@@ -369,6 +380,35 @@ Behavior:
 - Derived, memoized: `nodeOfTerminal(id)` via `terminalNode`, `travel(a, b)` = `travel[a.index * N + b.index]` (directed, Gm; same node → 0; `null` = unreachable), `groupOf(node)` = `node.group ?? node.id`, `systemOf(node)` = `node.system`.
 - A terminal missing from `terminalNode` has no position (2 terminals in 4.10.2, Wikelo stations): it can still be a fixed stop, but no distance-based feature can use it (§6.7).
 
+### 5.5 Service worker, manifest and offline shell (MUST, revision 16)
+
+The app is an installable PWA whose shell starts without network. Data stays with the IndexedDB cache of §5.2; the service worker only serves the app's own files.
+
+- **Tooling:** `vite-plugin-pwa` 2.x (its peer range includes Vite 8) with `strategies: 'generateSW'` (Workbox), `registerType: 'prompt'`, `injectRegister: false`. The app registers the worker itself through `virtual:pwa-register/react` (`useRegisterSW`). Production builds only: the dev server registers no worker (`devOptions.enabled: false`), and tests mock the virtual module.
+- **Precache** (generated at build time from `globPatterns`, never a hand-kept list): `index.html`, the JS and CSS bundles, `favicon.svg`, the icons and the manifest, the font files as `woff2` only (not `woff`), and `terminal-map/*.json`. The map files are small (≈ 60 kB per version), and precaching them lets "add profitable stops" work offline (§5.4). Check the precache size that the build reports. If it is above 3 MB, limit the fonts to the subsets the app uses (latin, latin-ext).
+- **Navigation:** navigation requests get the precached `index.html` (`navigateFallback`), limited to the base path.
+- **UEX API:** the worker does **not** handle `api.uexcorp.uk`: no runtime caching, so requests go to the network as before. Offline, the app shows the IndexedDB data and the offline banner (§5.2). Reason: one cache with the TTLs of §5.2 instead of two, so the call budget of criterion 2 stays the same and can still be checked in the network panel.
+- **Base path:** the worker is `<base>sw.js` with scope `<base>`. It works under `/sc-hauling-companion/` (Pages) and `/` (the Docker `app` image). If the `runtime` image sets long cache headers, it serves `sw.js`, `index.html` and the manifest with `Cache-Control: no-cache`.
+- **Updates:**
+  - A new version installs in the background and **waits**: no `skipWaiting`/`clientsClaim` at install, `cleanupOutdatedCaches: true`.
+  - The app checks for an update when it starts (browser default) and when it becomes visible again (`visibilitychange`), at most once per hour (`registration.update()`).
+  - While a new version waits, the update banner shows (§7.2). Its `RELOAD` button calls `updateServiceWorker(true)` (skip waiting + reload). Inputs, route and trip persist in `localStorage`, so the reload loses nothing.
+  - `✕` hides the banner for this page session. The waiting version still takes over at the next cold start.
+- **First install** shows nothing: no "ready to work offline" message.
+- **Manifest** (via the plugin's `manifest` option; the plugin also injects the `<link rel="manifest">`):
+
+  | Field | Value |
+  |---|---|
+  | `name` / `short_name` | `SC Hauling Companion` / `Hauling` |
+  | `description` | `Star Citizen cargo hauling planner — trades per stop for your ship and route.` |
+  | `id`, `start_url`, `scope` | `./` (relative, so the base path works) |
+  | `display` | `standalone` |
+  | `background_color`, `theme_color` | `#0a0907` |
+  | `lang`, `categories` | `en`, `["games", "utilities"]` |
+  | `orientation` | not set (any) |
+
+- **Icons:** generated from `public/favicon.svg` with `@vite-pwa/assets-generator`, preset `minimal-2023`: 64, 192 and 512 px, a maskable 512 px with the amber triangle inside the safe zone on `#0a0907`, and a 180 px `apple-touch-icon` on the same background. The generator runs in Docker; its output goes to `public/` and is committed. The README names the command. `index.html` gets `<link rel="apple-touch-icon" href="…">` (with the base path) and keeps `theme-color` and `color-scheme`.
+
 ---
 
 ## 6. Trade calculation (pure functions in `src/calc/`, no React)
@@ -386,7 +426,7 @@ interface CalcInput {
     includeIllegal: boolean;          // default true (illegal hauls are badged)
     includeVolatileQt: boolean;       // default false
     maxPriceAgeDays: number | null;   // default null (no filter); ages are always shown
-    hideLowStock: boolean;            // default false — opt-in, hides NO STOCK? and LOW STOCK? hauls
+    hideLowStock: boolean;            // default false — opt-in, hides NO/LOW STOCK? and NO/LOW DEMAND? hauls
   };
 }
 ```
@@ -407,7 +447,7 @@ For every pair of stop indices `i < j` and every commodity `c` with a buy offer 
   - `noStock` if `status_buy = 1`; `lowStock` if `status_buy = 2`.
   - `noDemand` if `status_sell = 7`; `lowDemand` if `status_sell = 6`.
   - Also carry the raw values for display: `scu_buy` (fallback `scu_buy_avg`), `scu_sell_stock`, and `scu_sell` only when `> 0`. A `status_sell` of 1 is shown only when `scu_sell > 0` (otherwise it is an unreported default, see §4.2).
-- **Stock filter:** if `options.hideLowStock` and the buy row has `status_buy` 1 or 2 (the `noStock` / `lowStock` warnings), drop the haul and count it under `lowStock`. Demand warnings are not filtered.
+- **Inventory filter:** if `options.hideLowStock` and the buy row has `status_buy` 1 or 2 (the `noStock` / `lowStock` warnings) **or the sell row has `status_sell` 6 or 7** (the `lowDemand` / `noDemand` warnings — the terminal may not take the whole load), drop the haul and count it under `lowStock` (buy side) or `lowDemand` (sell side; a haul with both counts under `lowStock`). `scu_sell` is not used: its semantics are undocumented and it is 0 in most rows (§4.2).
 - **Elevator cap** per terminal (rules confirmed by the product owner; UEX has no hangar-elevator data):
 
   | Terminal | `smallHangar` off | `smallHangar` on |
@@ -562,7 +602,9 @@ These values are a starting point. Tune them in the browser to match the warm-wh
   - **Unsupported browsers:** when neither `document.fullscreenEnabled` nor `document.webkitFullscreenEnabled` is true (notably iPhone Safari), the button is **not rendered**. Feature-detect it; never sniff the user agent.
   - **Failures:** a rejected request (e.g. a permissions policy in an embedding iframe) is caught silently. The button stays in its windowed state and nothing breaks.
   - **Layout:** in full screen the layout is unchanged. Sticky bottom elements keep `env(safe-area-inset-bottom)` padding.
-- Footer (in SHIP view): "Data: UEX Corp (uexcorp.space) · community-sourced, may be inaccurate · Not affiliated with Cloud Imperium Games."
+- Footer (in SHIP view): "Data: UEX Corp (uexcorp.space) · community-sourced, may be inaccurate · Not affiliated with Cloud Imperium Games · v<version>" (e.g. `v1.4.0`). The version comes from `package.json` at build time (Vite `define`), so the user can see which version runs after an update.
+- **Update banner** (§5.5): same place and style as the offline banner, non-blocking: `New version ready` + a `RELOAD` button + a `✕` icon button (`aria-label` "Dismiss"). Both buttons have a ≥ 44 px hit area. When both banners show, the update banner comes second.
+- **Installed app** (`display-mode: standalone`): the layout is unchanged. The full screen button stays wherever the Fullscreen API is available. Sticky bottom elements keep their `env(safe-area-inset-bottom)` padding.
 
 ### 7.3 SHIP view
 
@@ -575,8 +617,13 @@ These values are a starting point. Tune them in the browser to match the warm-wh
   - If the ship's sizes are unknown, show "Box sizes for this ship unknown — set the largest box that fits" and preset `{min: 4, max: 32}`.
   - Both handles must be usable by touch and keyboard (each handle is a `role="slider"` with arrow keys; ≥ 44 px hit area). Two overlaid native `<input type="range">` elements are acceptable.
 - **Small hangar** toggle below the box slider: `Lands in a small hangar (S) — hangar elevators take max 24 SCU boxes`. Preset from the ship's `pad_type` (`S` → on, anything else or unknown → off) whenever the ship changes; the user can override it, and the choice persists. With no ship selected it is off. A short hint names the rule: "Outposts always take max 24 SCU; cities and stations without a loading dock too when you land in a small hangar."
-- **Filters**: toggles for Include illegal (on), Include quantum-volatile (off) and **Hide low & no stock** (off; hint: "Hides trades whose reported stock is low or empty — for stress-free hauling"). There is no demand filter.
+- **Filters**: toggles for Include illegal (on), Include quantum-volatile (off) and **Hide low stock & demand** (off; hint: "Hides trades where the buy terminal reports low or no stock, or the sell terminal low or no demand — for stress-free hauling"). Persisted under the same setting as before (`hideLowStock`), so users who had it on keep it on.
 - Data controls: "Refresh prices", "Reload all data" (with timestamps).
+- **Install app** (§5.5), next to the data controls:
+  - An `INSTALL APP` button (secondary style, ≥ 44 px), rendered only after the browser fired `beforeinstallprompt`. The app calls `preventDefault()` on that event and keeps it.
+  - Tapping it calls `prompt()`. After either outcome, or on `appinstalled`, the button goes away.
+  - It is never rendered in `display-mode: standalone`.
+  - Feature-detect only, no user-agent sniffing. Browsers without the event (iPhone Safari) show no button and no hint; they install via their own menu.
 
 ### 7.4 ROUTE view
 
@@ -622,7 +669,7 @@ These values are a starting point. Tune them in the browser to match the warm-wh
 - Sort selector for all stop lists: Profit (default), ROI, Margin/SCU, Investment — all descending.
 - Empty/insufficient states:
   - fewer than 2 stops → hint linking to ROUTE;
-  - no profitable trades → "No profitable trades along this route" + count of dropped trades by reason (`boxTooLarge`, `boxTooSmall`, `elevator`, illegal filter, volatile filter, price-age filter, `lowStock` filter).
+  - no profitable trades → "No profitable trades along this route" + count of dropped trades by reason (`boxTooLarge`, `boxTooSmall`, `elevator`, illegal filter, volatile filter, price-age filter, `lowStock` filter, `lowDemand` filter).
 - **Stop sections**, one per stop in route order:
   - Header: stop number + terminal display (§7.4).
   - Body: the buy options for that stop (§6.5) as a compact list. Show the top 5; a "Show N more" button expands the rest.
@@ -719,10 +766,17 @@ interface BoughtLine {
 
 **Sell reminders** (at stop `j`, shown above that stop's buy list, under the heading `SELL HERE`):
 
-- One reminder per bought line with `sellStop = j`.
-- Format: `✓ Scrap · bought #2 Everus Harbor @ 2,954 → sell @ 3,600 /SCU`, plus the `ILLEGAL` badge if applicable. Styling: `--sel` left border, no fill.
+- One reminder per bought line whose **effective sell stop** `sellAt ?? sellStop` is `j`.
+- Format: `✓ Scrap · bought #2 Everus Harbor @ 2,954 → sell @ 3,600 /SCU`, plus the `ILLEGAL` badge if applicable. Styling: `--sel` left border, no fill. A moved reminder adds `· moved from #3` and uses the sell price of its new stop.
 - Reminders at stops that are not the current stop are shown dimmed (still upcoming).
 - Departing stop `j` ends its reminders; they are counted as "Sold" in the departed summary.
+- **Sell elsewhere** (edge case: the terminal won't take all of it, e.g. 512 SCU Copper on board but the station only buys 48):
+  - Every reminder whose stop is not departed has a **muted** text button at its end: `Can't sell all? ⌄` (`--amber-dim`, no border, 12 px mono, ≥ 44 px hit area via padding). From 600 px viewport width it sits on the reminder's line, right-aligned; below that it goes on its own line under the reminder. The expanded options always span the full reminder width. It is collapsed by default; per reminder, UI state only.
+  - Expanded, it lists the **other not-yet-departed stops of the route that buy the commodity** (a sell offer in the current prices, same eligibility as §6.3 apart from margin), in route order, one button each: `#5 Seraphim · sell 4,700 /SCU (+1,100 vs. buy)`, with the `NO/LOW DEMAND?` badge when reported. Stops before the reminder's stop are allowed while they are not departed (sell earlier instead).
+  - If no other stop buys it: "No other stop on this route buys Copper." (no further action; editing the route would reset the trip).
+  - Choosing a stop moves the reminder: the bought line gets `sellAt = k` and `unitSellAt` = that stop's sell price (snapshot, like the other snapshot fields). The original `sellStop` stays (for the "moved from" text and to move it back). The list of a moved reminder also offers its original stop while that one is not departed; choosing it clears `sellAt`/`unitSellAt`.
+  - There is no quantity tracking: the whole reminder moves. Selling part at the first stop and the rest later is exactly that — the reminder now waits at the second stop.
+  - `ON BOARD:` uses the effective sell stop (`Copper → #5`). The move is a pure reducer function (`moveReminder(state, key, stop, unitSell)`), persisted with the trip; older persisted lines without `sellAt` keep working.
 
 **Current stop emphasis:** the current stop's section has a 2 px `--amber` border. The summary header shows `AT STOP k OF n`, plus `ON BOARD:`, which lists bought lines from departed stops that are not yet sold (`Scrap → #3, Steel → #7`).
 
@@ -737,7 +791,7 @@ interface BoughtLine {
 
 - Semantic HTML, labelled inputs, combobox ARIA pattern for autocomplete, focus visible (amber ring).
 - **Dropdown indicators** (sort `<select>` and any other select/combobox with a chevron): the chevron's right edge sits 14–16 px inside the control's border, with ≥ 8 px gap to the text (`padding-inline-end` ≥ 40 px). It is never flush with the edge. Use one shared style for all of them.
-- Works offline after first load (data from cache) — a service worker/PWA is **MAY** (not required).
+- Works offline after first load: the app shell from the service worker, the data from the IndexedDB cache (§5.2, §5.5).
 - Handle API schema surprises defensively: unknown/missing fields must not crash; drop malformed records and `console.warn` once per dataset.
 
 ---
@@ -756,7 +810,7 @@ interface BoughtLine {
 10. Every collapsed option line shows commodity, allowed box sizes, sell stop, buy price/SCU, sell price/SCU, profit, ROI and legal/illegal; the expanded line adds quantity, box breakdown and price ages.
 11. Layout has no horizontal scroll at 360 px width; all interactive touch targets ≥ 44 px; badges ≤ 20 px tall; warm-white amber theme as in §7.1; the CALCULATE TRADES button and tab bar are centered in the content column at 360, 820 and 1440 px width.
 12. Unit-test coverage for `src/calc/**` and `src/api/mappers.ts` ≥ 90 % lines.
-13. With "Hide low & no stock" off (default), reported inventory never removes, caps or re-ranks a trade: a haul whose buy row has `status_buy = 1` and `scu_buy = 0` still appears with full `qtyMax` and a `NO STOCK?` badge (unit-tested). With it on, exactly the NO STOCK? and LOW STOCK? hauls disappear and are counted as dropped.
+13. With "Hide low & no stock" off (default), reported inventory never removes, caps or re-ranks a trade: a haul whose buy row has `status_buy = 1` and `scu_buy = 0` still appears with full `qtyMax` and a `NO STOCK?` badge (unit-tested). With it on, exactly the NO STOCK?, LOW STOCK?, NO DEMAND? and LOW DEMAND? hauls disappear and are counted as dropped.
 14. Trip mode (§7.6):
     - Tapping a line at the current stop toggles a green highlight plus ✓ and nothing else.
     - Every line has a visibly bordered `DETAILS ⌄` button. It opens and closes details independently of "bought", and never overlaps the profit.
@@ -769,12 +823,20 @@ interface BoughtLine {
 17. Add profitable stops (§6.7, §7.4): with the option on, ROUTE suggests dynamic stops only when they raise the route profit; every suggestion respects the per-gap, total, per-planetary-group and detour limits, the forward rule (backtracking only inside a planetary group), contains no city terminal and no star system the fixed stops don't use; a dynamic stop may serve a trade that spans a fixed stop (buy at X before B, sell at Y after B). Add / Add all / ✕ work as specified, the UI stays responsive while searching, and the map file is fetched at most once per game version. No UEX request is added. Accepted stops are marked `DYNAMIC`, keep counting towards all limits after the recompute (with defaults, accepting the suggested stops never leads to more than 4 dynamic stops in total or more than 1 per gap), and the ROUTE sections appear in the order of §7.4.
 18. Skip lines that earn less than their stopover chain are one compact, dimmed row (commodity, sell stop, profit, verdict, Details) and show the full layout again when expanded or marked as bought.
 19. Elevator caps (§6.3): a trade to or from a planetary outpost never uses boxes above 24 SCU; with "small hangar" on, the same holds for cities and for stations without a loading dock, while stations with a loading dock still allow 32; the toggle is preset from the ship's `pad_type` and can be overridden; trades that only work with bigger boxes are counted under `elevator`; the expanded line names the limiting stop. The same caps apply to the profitable-stops search (§6.7), which reuses haul generation.
+20. Sell limits: "Hide low stock & demand" also hides trades whose sell terminal reports low or no demand. In trip mode every not-yet-departed sell reminder has a muted, collapsed `Can't sell all?` action; expanded, it lists the other not-yet-departed route stops that buy the commodity with their sell price, and choosing one moves the reminder there (`moved from #n`), with a way back while the original stop is not departed.
+21. PWA (§5.5):
+    - **Installable:** the production build (`docker compose up --build app`, and Pages under its base path) shows no installability errors in Chrome DevTools → Application → Manifest, with the icons and the maskable icon listed.
+    - **Offline start:** after one online load, a reload in offline mode starts the app with the cached data and the offline banner, and "add profitable stops" still works.
+    - **No UEX caching:** no UEX request is answered by the service worker, and the call counts of criterion 2 are unchanged.
+    - **Updates:** after a new build the update banner appears, and `RELOAD` switches to the new version while ship, route and trip state are kept.
+    - **Dev:** the dev server registers no service worker.
 
 ### 8.1 Required unit tests (minimum)
 
 - `mappers`: numeric strings, `"null"`/`""` CSV handling, 0/1 booleans, ignoring non-standard box sizes.
 - `maxFillable`: `(46,{1,2,4,8,16}) = 46`, `(46,{8,16}) = 40`, `(7,{8,16}) = 0`, `(30,{24}) = 24`.
-- Candidate generation: excludes raw, non-positive margin, empty box sets; inventory statuses only set warning flags (never exclude or cap) unless `hideLowStock` is on, which drops exactly `status_buy` 1 and 2 and counts them under `lowStock`.
+- Candidate generation: excludes raw, non-positive margin, empty box sets; inventory statuses only set warning flags (never exclude or cap) unless `hideLowStock` is on, which drops exactly `status_buy` 1 and 2 (counted under `lowStock`) and `status_sell` 6 and 7 (counted under `lowDemand`, or `lowStock` when both apply).
+- Sell elsewhere (§7.6): `moveReminder` sets `sellAt`/`unitSellAt`, moves the reminder to the chosen stop, keeps `sellStop`, moving back clears it; only not-yet-departed stops with a sell offer are offered (earlier and later ones); `ON BOARD` and departed summaries use the effective stop; old persisted lines without `sellAt` load unchanged.
 - Elevator caps: outpost ↔ station with all sizes offered → B max 24 regardless of `smallHangar`; city and station without loading dock → 32 off / 24 on; station with loading dock → 32 either way; a UEX max below 24 stays the limit; `elevator` drop reason when only 32 SCU boxes are offered; `elevatorCap` names the limiting stops; `smallHangar` preset from `pad_type` (S → on; M, empty, null → off) and reset on ship change.
 - Box range: `{min 4, max 16}` with buy sizes `1,2,4,8,16,24,32` → B = {4,8,16}; buy sizes `1,2` with min 4 → dropped as `boxTooSmall`; sell row sizes narrow B; 46 SCU with B = {4,8,16} → 44 SCU, 2 unused.
 - Stopover comparison (§6.6): A→C vs. A→B + B→C with different commodities; a longer skip whose best chain contains a skip leg; negative delta; empty chain (profit 0, no legs); hauls without skips stay `null`.
@@ -785,6 +847,11 @@ interface BoughtLine {
 - Terminal secondary line: the examples table in §7.4.
 - Trip state as pure reducer functions (e.g. `src/trip/tripReducer.ts`): toggle bought (only at the current stop), depart, undo, complete, reset on route change, reminders per stop, on-board list, snapshot survival when a line disappears from the results.
 - Cache: TTL expiry, stale-while-revalidate, gameVersion invalidation, IndexedDB-unavailable fallback (mock).
+- PWA (§5.5, `virtual:pwa-register/react` mocked):
+  - The update banner is hidden without a waiting version and shown with one. `RELOAD` calls `updateServiceWorker(true)`; `✕` hides the banner.
+  - The update check runs on `visibilitychange` to visible, at most once per hour (fake timers).
+  - The install button is absent without `beforeinstallprompt`. After the event it shows and calls `prompt()`, and it disappears after the outcome and on `appinstalled`. It is absent in `display-mode: standalone` (mocked `matchMedia`).
+  - The footer shows the build version.
 - Autocomplete ranking and tokenization cases from criterion 3 (use small fixture terminals).
 
 Test fixtures: create small hand-written JSON fixtures in `src/__fixtures__/` shaped like §4.2 samples. Do **not** hit the live API in tests.
@@ -847,5 +914,4 @@ All information required by the stated v1.0 feature set is available from public
 - aUEC budget constraint.
 - Split-load helper: tap a line to enter the SCU actually bought (e.g. stock limit at the terminal), and the stop's other lines recompute profit for the remaining space.
 - Cargo-on-board tracking / route plans (removed in revision 2 in favour of per-stop lists). Brought back with user-entered stock limits, plan optimization would need a min-cost-flow formulation.
-- PWA install + offline shell.
 - Share route via URL (encode terminal ids).
