@@ -1258,6 +1258,24 @@ select.input:disabled {
   transform: rotate(180deg);
 }
 
+/* Wide screens: the action sits at the end of the reminder line, the options below both */
+@media (min-width: 600px) {
+  .reminder {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 12px;
+  }
+
+  .reminder__more {
+    padding: 0 0 0 8px;
+  }
+
+  .reminder__options {
+    grid-column: 1 / -1;
+  }
+}
+
 .reminder__moved {
   color: var(--amber-dim);
 }
