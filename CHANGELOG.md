@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.4.0 - 2026-11-02
+
+### Features
+
+- **trip:** Hide low-demand sells and let a sell reminder move to another stop
+- **pwa:** Installable app with offline shell, update banner and install button
+
 ## 1.3.0 - 2026-10-30
 
 ### Features
