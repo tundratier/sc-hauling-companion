@@ -6,6 +6,13 @@ This document is the single source of truth for implementing v1.0. It is written
 
 ### Revision history
 
+**Revision 16 (2026-11-02)** — **installable PWA**:
+- A service worker serves the app shell offline. The UEX data stays with the IndexedDB cache, and the worker never caches API calls (§5.5).
+- A manifest and icons generated from the favicon (§5.5).
+- An update banner with `RELOAD`, the app version in the footer, and the installed-app note (§7.2).
+- An `INSTALL APP` button in SHIP (§7.3).
+- §7.7 now requires offline use, and the PWA item leaves §10. Acceptance criterion 21, tests (§8.1). (Written on top of develop, which has revision 14. Revision 15 and criterion 20 come with `feature/sell-limits`.)
+
 **Revision 14 (2026-10-30)** — **cargo elevator limits** and a **stock filter**:
 - Every terminal gets an elevator box cap from rules the product owner confirmed (UEX has no data on hangar elevators): planetary terminals outside cities 24 SCU; cities and stations 24 SCU for ships that land in a small (S) hangar, except stations with an external loading dock. The cap applies at the buy and the sell terminal (§6.3).
 - SHIP: a "small hangar" toggle, preset from the ship's UEX `pad_type`, and an opt-in "Hide low & no stock" filter (§7.3). This is the first and only filter on reported inventory, deliberately opt-in (§6.1).
@@ -369,6 +376,35 @@ Behavior:
 - Derived, memoized: `nodeOfTerminal(id)` via `terminalNode`, `travel(a, b)` = `travel[a.index * N + b.index]` (directed, Gm; same node → 0; `null` = unreachable), `groupOf(node)` = `node.group ?? node.id`, `systemOf(node)` = `node.system`.
 - A terminal missing from `terminalNode` has no position (2 terminals in 4.10.2, Wikelo stations): it can still be a fixed stop, but no distance-based feature can use it (§6.7).
 
+### 5.5 Service worker, manifest and offline shell (MUST, revision 16)
+
+The app is an installable PWA whose shell starts without network. Data stays with the IndexedDB cache of §5.2; the service worker only serves the app's own files.
+
+- **Tooling:** `vite-plugin-pwa` 2.x (its peer range includes Vite 8) with `strategies: 'generateSW'` (Workbox), `registerType: 'prompt'`, `injectRegister: false`. The app registers the worker itself through `virtual:pwa-register/react` (`useRegisterSW`). Production builds only: the dev server registers no worker (`devOptions.enabled: false`), and tests mock the virtual module.
+- **Precache** (generated at build time from `globPatterns`, never a hand-kept list): `index.html`, the JS and CSS bundles, `favicon.svg`, the icons and the manifest, the font files as `woff2` only (not `woff`), and `terminal-map/*.json`. The map files are small (≈ 60 kB per version), and precaching them lets "add profitable stops" work offline (§5.4). Check the precache size that the build reports. If it is above 3 MB, limit the fonts to the subsets the app uses (latin, latin-ext).
+- **Navigation:** navigation requests get the precached `index.html` (`navigateFallback`), limited to the base path.
+- **UEX API:** the worker does **not** handle `api.uexcorp.uk`: no runtime caching, so requests go to the network as before. Offline, the app shows the IndexedDB data and the offline banner (§5.2). Reason: one cache with the TTLs of §5.2 instead of two, so the call budget of criterion 2 stays the same and can still be checked in the network panel.
+- **Base path:** the worker is `<base>sw.js` with scope `<base>`. It works under `/sc-hauling-companion/` (Pages) and `/` (the Docker `app` image). If the `runtime` image sets long cache headers, it serves `sw.js`, `index.html` and the manifest with `Cache-Control: no-cache`.
+- **Updates:**
+  - A new version installs in the background and **waits**: no `skipWaiting`/`clientsClaim` at install, `cleanupOutdatedCaches: true`.
+  - The app checks for an update when it starts (browser default) and when it becomes visible again (`visibilitychange`), at most once per hour (`registration.update()`).
+  - While a new version waits, the update banner shows (§7.2). Its `RELOAD` button calls `updateServiceWorker(true)` (skip waiting + reload). Inputs, route and trip persist in `localStorage`, so the reload loses nothing.
+  - `✕` hides the banner for this page session. The waiting version still takes over at the next cold start.
+- **First install** shows nothing: no "ready to work offline" message.
+- **Manifest** (via the plugin's `manifest` option; the plugin also injects the `<link rel="manifest">`):
+
+  | Field | Value |
+  |---|---|
+  | `name` / `short_name` | `SC Hauling Companion` / `Hauling` |
+  | `description` | `Star Citizen cargo hauling planner — trades per stop for your ship and route.` |
+  | `id`, `start_url`, `scope` | `./` (relative, so the base path works) |
+  | `display` | `standalone` |
+  | `background_color`, `theme_color` | `#0a0907` |
+  | `lang`, `categories` | `en`, `["games", "utilities"]` |
+  | `orientation` | not set (any) |
+
+- **Icons:** generated from `public/favicon.svg` with `@vite-pwa/assets-generator`, preset `minimal-2023`: 64, 192 and 512 px, a maskable 512 px with the amber triangle inside the safe zone on `#0a0907`, and a 180 px `apple-touch-icon` on the same background. The generator runs in Docker; its output goes to `public/` and is committed. The README names the command. `index.html` gets `<link rel="apple-touch-icon" href="…">` (with the base path) and keeps `theme-color` and `color-scheme`.
+
 ---
 
 ## 6. Trade calculation (pure functions in `src/calc/`, no React)
@@ -562,7 +598,9 @@ These values are a starting point. Tune them in the browser to match the warm-wh
   - **Unsupported browsers:** when neither `document.fullscreenEnabled` nor `document.webkitFullscreenEnabled` is true (notably iPhone Safari), the button is **not rendered**. Feature-detect it; never sniff the user agent.
   - **Failures:** a rejected request (e.g. a permissions policy in an embedding iframe) is caught silently. The button stays in its windowed state and nothing breaks.
   - **Layout:** in full screen the layout is unchanged. Sticky bottom elements keep `env(safe-area-inset-bottom)` padding.
-- Footer (in SHIP view): "Data: UEX Corp (uexcorp.space) · community-sourced, may be inaccurate · Not affiliated with Cloud Imperium Games."
+- Footer (in SHIP view): "Data: UEX Corp (uexcorp.space) · community-sourced, may be inaccurate · Not affiliated with Cloud Imperium Games · v<version>" (e.g. `v1.4.0`). The version comes from `package.json` at build time (Vite `define`), so the user can see which version runs after an update.
+- **Update banner** (§5.5): same place and style as the offline banner, non-blocking: `New version ready` + a `RELOAD` button + a `✕` icon button (`aria-label` "Dismiss"). Both buttons have a ≥ 44 px hit area. When both banners show, the update banner comes second.
+- **Installed app** (`display-mode: standalone`): the layout is unchanged. The full screen button stays wherever the Fullscreen API is available. Sticky bottom elements keep their `env(safe-area-inset-bottom)` padding.
 
 ### 7.3 SHIP view
 
@@ -577,6 +615,11 @@ These values are a starting point. Tune them in the browser to match the warm-wh
 - **Small hangar** toggle below the box slider: `Lands in a small hangar (S) — hangar elevators take max 24 SCU boxes`. Preset from the ship's `pad_type` (`S` → on, anything else or unknown → off) whenever the ship changes; the user can override it, and the choice persists. With no ship selected it is off. A short hint names the rule: "Outposts always take max 24 SCU; cities and stations without a loading dock too when you land in a small hangar."
 - **Filters**: toggles for Include illegal (on), Include quantum-volatile (off) and **Hide low & no stock** (off; hint: "Hides trades whose reported stock is low or empty — for stress-free hauling"). There is no demand filter.
 - Data controls: "Refresh prices", "Reload all data" (with timestamps).
+- **Install app** (§5.5), next to the data controls:
+  - An `INSTALL APP` button (secondary style, ≥ 44 px), rendered only after the browser fired `beforeinstallprompt`. The app calls `preventDefault()` on that event and keeps it.
+  - Tapping it calls `prompt()`. After either outcome, or on `appinstalled`, the button goes away.
+  - It is never rendered in `display-mode: standalone`.
+  - Feature-detect only, no user-agent sniffing. Browsers without the event (iPhone Safari) show no button and no hint; they install via their own menu.
 
 ### 7.4 ROUTE view
 
@@ -737,7 +780,7 @@ interface BoughtLine {
 
 - Semantic HTML, labelled inputs, combobox ARIA pattern for autocomplete, focus visible (amber ring).
 - **Dropdown indicators** (sort `<select>` and any other select/combobox with a chevron): the chevron's right edge sits 14–16 px inside the control's border, with ≥ 8 px gap to the text (`padding-inline-end` ≥ 40 px). It is never flush with the edge. Use one shared style for all of them.
-- Works offline after first load (data from cache) — a service worker/PWA is **MAY** (not required).
+- Works offline after first load: the app shell from the service worker, the data from the IndexedDB cache (§5.2, §5.5).
 - Handle API schema surprises defensively: unknown/missing fields must not crash; drop malformed records and `console.warn` once per dataset.
 
 ---
@@ -769,6 +812,12 @@ interface BoughtLine {
 17. Add profitable stops (§6.7, §7.4): with the option on, ROUTE suggests dynamic stops only when they raise the route profit; every suggestion respects the per-gap, total, per-planetary-group and detour limits, the forward rule (backtracking only inside a planetary group), contains no city terminal and no star system the fixed stops don't use; a dynamic stop may serve a trade that spans a fixed stop (buy at X before B, sell at Y after B). Add / Add all / ✕ work as specified, the UI stays responsive while searching, and the map file is fetched at most once per game version. No UEX request is added. Accepted stops are marked `DYNAMIC`, keep counting towards all limits after the recompute (with defaults, accepting the suggested stops never leads to more than 4 dynamic stops in total or more than 1 per gap), and the ROUTE sections appear in the order of §7.4.
 18. Skip lines that earn less than their stopover chain are one compact, dimmed row (commodity, sell stop, profit, verdict, Details) and show the full layout again when expanded or marked as bought.
 19. Elevator caps (§6.3): a trade to or from a planetary outpost never uses boxes above 24 SCU; with "small hangar" on, the same holds for cities and for stations without a loading dock, while stations with a loading dock still allow 32; the toggle is preset from the ship's `pad_type` and can be overridden; trades that only work with bigger boxes are counted under `elevator`; the expanded line names the limiting stop. The same caps apply to the profitable-stops search (§6.7), which reuses haul generation.
+21. PWA (§5.5):
+    - **Installable:** the production build (`docker compose up --build app`, and Pages under its base path) shows no installability errors in Chrome DevTools → Application → Manifest, with the icons and the maskable icon listed.
+    - **Offline start:** after one online load, a reload in offline mode starts the app with the cached data and the offline banner, and "add profitable stops" still works.
+    - **No UEX caching:** no UEX request is answered by the service worker, and the call counts of criterion 2 are unchanged.
+    - **Updates:** after a new build the update banner appears, and `RELOAD` switches to the new version while ship, route and trip state are kept.
+    - **Dev:** the dev server registers no service worker.
 
 ### 8.1 Required unit tests (minimum)
 
@@ -785,6 +834,11 @@ interface BoughtLine {
 - Terminal secondary line: the examples table in §7.4.
 - Trip state as pure reducer functions (e.g. `src/trip/tripReducer.ts`): toggle bought (only at the current stop), depart, undo, complete, reset on route change, reminders per stop, on-board list, snapshot survival when a line disappears from the results.
 - Cache: TTL expiry, stale-while-revalidate, gameVersion invalidation, IndexedDB-unavailable fallback (mock).
+- PWA (§5.5, `virtual:pwa-register/react` mocked):
+  - The update banner is hidden without a waiting version and shown with one. `RELOAD` calls `updateServiceWorker(true)`; `✕` hides the banner.
+  - The update check runs on `visibilitychange` to visible, at most once per hour (fake timers).
+  - The install button is absent without `beforeinstallprompt`. After the event it shows and calls `prompt()`, and it disappears after the outcome and on `appinstalled`. It is absent in `display-mode: standalone` (mocked `matchMedia`).
+  - The footer shows the build version.
 - Autocomplete ranking and tokenization cases from criterion 3 (use small fixture terminals).
 
 Test fixtures: create small hand-written JSON fixtures in `src/__fixtures__/` shaped like §4.2 samples. Do **not** hit the live API in tests.
@@ -847,5 +901,4 @@ All information required by the stated v1.0 feature set is available from public
 - aUEC budget constraint.
 - Split-load helper: tap a line to enter the SCU actually bought (e.g. stock limit at the terminal), and the stop's other lines recompute profit for the remaining space.
 - Cargo-on-board tracking / route plans (removed in revision 2 in favour of per-stop lists). Brought back with user-entered stock limits, plan optimization would need a min-cost-flow formulation.
-- PWA install + offline shell.
 - Share route via URL (encode terminal ids).
