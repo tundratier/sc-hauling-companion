@@ -6,6 +6,8 @@ This document is the single source of truth for implementing v1.0. It is written
 
 ### Revision history
 
+**Revision 17 (2026-11-03)** — the full screen button is not rendered in the installed app (`display-mode: standalone`) (§7.2, criterion 15).
+
 **Revision 16 (2026-11-02)** — **installable PWA**:
 - A service worker serves the app shell offline. The UEX data stays with the IndexedDB cache, and the worker never caches API calls (§5.5).
 - A manifest and icons generated from the favicon (§5.5).
@@ -600,11 +602,12 @@ These values are a starting point. Tune them in the browser to match the warm-wh
   - **Behaviour:** it toggles the Fullscreen API on `document.documentElement` — `requestFullscreen({ navigationUI: "hide" })` / `document.exitFullscreen()`. Fall back to the `webkit`-prefixed methods (older iPadOS Safari).
   - **State:** the icon follows `fullscreenchange` / `webkitfullscreenchange`, because the user can also leave full screen with Esc or a system gesture. The state is not persisted, since browsers only allow entering full screen from a user gesture.
   - **Unsupported browsers:** when neither `document.fullscreenEnabled` nor `document.webkitFullscreenEnabled` is true (notably iPhone Safari), the button is **not rendered**. Feature-detect it; never sniff the user agent.
+  - **Installed app:** in `display-mode: standalone` (§5.5) the button is **not rendered** either. The installed app has its own window, so the button would be redundant there.
   - **Failures:** a rejected request (e.g. a permissions policy in an embedding iframe) is caught silently. The button stays in its windowed state and nothing breaks.
   - **Layout:** in full screen the layout is unchanged. Sticky bottom elements keep `env(safe-area-inset-bottom)` padding.
 - Footer (in SHIP view): "Data: UEX Corp (uexcorp.space) · community-sourced, may be inaccurate · Not affiliated with Cloud Imperium Games · v<version>" (e.g. `v1.4.0`). The version comes from `package.json` at build time (Vite `define`), so the user can see which version runs after an update.
 - **Update banner** (§5.5): same place and style as the offline banner, non-blocking: `New version ready` + a `RELOAD` button + a `✕` icon button (`aria-label` "Dismiss"). Both buttons have a ≥ 44 px hit area. When both banners show, the update banner comes second.
-- **Installed app** (`display-mode: standalone`): the layout is unchanged. The full screen button stays wherever the Fullscreen API is available. Sticky bottom elements keep their `env(safe-area-inset-bottom)` padding.
+- **Installed app** (`display-mode: standalone`): the layout is unchanged, except that the header has no full screen button. Sticky bottom elements keep their `env(safe-area-inset-bottom)` padding.
 
 ### 7.3 SHIP view
 
@@ -818,7 +821,7 @@ interface BoughtLine {
     - Departing collapses the stop and shows each bought line as a sell reminder at its sell stop. Undo restores the previous state.
     - After the last departure, `COMPLETE ROUTE` clears the stops and opens ROUTE.
     - Trip progress survives a page reload and resets when the route is edited.
-15. The header's full screen button enters and leaves full screen. Its icon and label follow the real state, including leaving with Esc. It is absent where the Fullscreen API is unavailable. Unit-tested with a mocked Fullscreen API: supported, unsupported, and rejected request.
+15. The header's full screen button enters and leaves full screen. Its icon and label follow the real state, including leaving with Esc. It is absent where the Fullscreen API is unavailable and in the installed app (`display-mode: standalone`). Unit-tested with a mocked Fullscreen API: supported, unsupported, rejected request, and standalone.
 16. Every skip line shows, without expanding, how much more or less it earns than the best chain of trades via the skipped stops (§6.6); the expanded line lists that chain's legs and the difference. Lines without skips show no comparison.
 17. Add profitable stops (§6.7, §7.4): with the option on, ROUTE suggests dynamic stops only when they raise the route profit; every suggestion respects the per-gap, total, per-planetary-group and detour limits, the forward rule (backtracking only inside a planetary group), contains no city terminal and no star system the fixed stops don't use; a dynamic stop may serve a trade that spans a fixed stop (buy at X before B, sell at Y after B). Add / Add all / ✕ work as specified, the UI stays responsive while searching, and the map file is fetched at most once per game version. No UEX request is added. Accepted stops are marked `DYNAMIC`, keep counting towards all limits after the recompute (with defaults, accepting the suggested stops never leads to more than 4 dynamic stops in total or more than 1 per gap), and the ROUTE sections appear in the order of §7.4.
 18. Skip lines that earn less than their stopover chain are one compact, dimmed row (commodity, sell stop, profit, verdict, Details) and show the full layout again when expanded or marked as bought.

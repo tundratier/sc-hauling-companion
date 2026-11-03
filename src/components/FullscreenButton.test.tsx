@@ -160,6 +160,30 @@ describe('without a Fullscreen API (e.g. iPhone Safari)', () => {
   })
 })
 
+describe('in the installed app (display-mode: standalone)', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('renders nothing even with a supported Fullscreen API', () => {
+    api = mockApi()
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn((query: string) => ({ matches: query.includes('standalone') })),
+    )
+    const { container } = render(<FullscreenButton />)
+    expect(container).toBeEmptyDOMElement()
+  })
+
+  it('still renders in a browser tab', () => {
+    api = mockApi()
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn(() => ({ matches: false })),
+    )
+    render(<FullscreenButton />)
+    expect(screen.getByRole('button', { name: 'Enter full screen' })).toBeInTheDocument()
+  })
+})
+
 describe('in the header', () => {
   it('is the rightmost header control, after refresh', () => {
     api = mockApi()
