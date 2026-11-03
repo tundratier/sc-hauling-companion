@@ -6,15 +6,17 @@ import {
   isFullscreenSupported,
   onFullscreenChange,
 } from '../lib/fullscreen'
+import { isStandalone } from '../pwa/installPrompt'
 import { Icon } from './Icon'
 
 /**
  * Header toggle for the Fullscreen API. Follows the real state (Esc and system gestures
- * included), is not persisted, and is not rendered where full screen is unavailable.
+ * included), is not persisted, and is not rendered where full screen is unavailable or in the
+ * installed app, which already has its own window.
  */
 export function FullscreenButton() {
   const active = useSyncExternalStore(onFullscreenChange, () => isFullscreen())
-  if (!isFullscreenSupported()) return null
+  if (!isFullscreenSupported() || isStandalone()) return null
   const label = active ? 'Exit full screen' : 'Enter full screen'
   return (
     <button

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.1 - 2026-11-03
+
+### Bug Fixes
+
+- **header:** Hide the full screen button in the installed app
+
 ## 1.4.0 - 2026-11-02
 
 ### Features
