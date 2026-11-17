@@ -17,6 +17,7 @@ import {
   type TripState,
 } from '../trip/tripReducer'
 import type { SellOption } from '../trip/sellElsewhere'
+import { StopBadges } from './Badges'
 import { OptionLine } from './OptionLine'
 
 export const TOP_N = 5
@@ -30,6 +31,7 @@ interface StopSectionProps {
   stops: number[]
   freeScu: number
   minBox: number
+  budget: number | null
   now: number
   trip: TripState
   onToggle: (line: BoughtLine) => void
@@ -242,6 +244,7 @@ export function StopSection({
   stops,
   freeScu,
   minBox,
+  budget,
   now,
   trip,
   onToggle,
@@ -283,6 +286,7 @@ export function StopSection({
       <div className="stop__text">
         <h3 className="stop__primary">{display?.primary ?? `Unknown terminal (#${terminalId})`}</h3>
         {display?.secondary && <div className="stop__secondary">{display.secondary}</div>}
+        <StopBadges safe={terminal?.safeLoading !== false} />
         {departed && (
           <div className="stop-section__summary">
             <span className="badge badge--dim">DEPARTED</span> {summaryText(trip, index)}
@@ -352,6 +356,7 @@ export function StopSection({
                       stops={stops}
                       freeScu={freeScu}
                       minBox={minBox}
+                      budget={budget}
                       now={now}
                       bought={boughtKeys.has(
                         boughtKey(item.haul.from, item.haul.commodity.id, item.haul.to),

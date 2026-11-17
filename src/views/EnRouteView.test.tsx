@@ -3,9 +3,10 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { resetMemoryCache } from '../api/cache'
 import { resetMapMemory } from '../api/terminalMap'
+import App from '../App'
 import { DEFAULT_SUGGEST_OPTIONS } from '../route/suggest'
 import type { SuggestJob } from '../route/suggest/run'
-import { setSuggestClient } from '../route/suggest/suggestClient'
+import { setSuggestClient, type SuggestClient } from '../route/suggest/suggestClient'
 import { useAppStore } from '../state/useAppStore'
 import { useDataStore } from '../state/useDataStore'
 import { useSuggestUi } from '../state/useSuggestUi'
@@ -13,7 +14,7 @@ import { buyOffer, commodity, sellOffer, terminal } from '../test-utils/calcFixt
 import { testMap, type TestNode } from '../test-utils/mapFixture'
 import { json, urlOf } from '../test-utils/mockFetch'
 import { INITIAL_TRIP } from '../trip/tripReducer'
-import { RouteView } from './RouteView'
+import { EnRouteView } from './EnRouteView'
 
 const nodes: TestNode[] = [
   { id: 'station:A', x: 0, terminals: [1] },
@@ -39,10 +40,14 @@ function seed(opts: { live?: string; offers?: ReturnType<typeof buyOffer>[] } = 
             name: 'Bravo Station',
             planetName: 'ArcCorp',
           }),
+          // an outpost without an armistice zone
           terminal(3, {
             displayname: 'Xray Outpost',
             name: 'Xray Outpost',
             planetName: 'Crusader',
+            idSpaceStation: 0,
+            idOutpost: 9,
+            safeLoading: false,
           }),
           terminal(4, {
             displayname: 'Yankee Station',
@@ -89,9 +94,8 @@ function serveMap(versions: string[] = ['4.10.2']) {
   return requested
 }
 
-const enable = async (user: ReturnType<typeof userEvent.setup>) =>
-  user.click(screen.getByRole('checkbox', { name: 'Add profitable stops' }))
 const suggestedRows = () => document.querySelectorAll<HTMLElement>('.stop--suggested')
+const routeRows = () => document.querySelectorAll<HTMLElement>('.stops > li:not(.stop--suggested)')
 const waitForRows = (n: number) =>
   waitFor(() => expect(suggestedRows()).toHaveLength(n), { timeout: 4000 })
 
@@ -101,42 +105,42 @@ beforeEach(() => {
   resetMapMemory()
   setSuggestClient(null)
   useAppStore.setState(useAppStore.getInitialState(), true)
-  useSuggestUi.setState({ dismissed: [] })
+  useSuggestUi.setState({ dismissed: [], routeKey: '' })
   useDataStore.setState(useDataStore.getInitialState(), true)
 })
 
-describe('add profitable stops panel', () => {
-  it('is off and collapsed by default, with the documented defaults behind the settings', async () => {
+describe('EN ROUTE settings', () => {
+  it('shows the four steppers directly (no toggle) with the documented defaults', async () => {
     seed()
     const requested = serveMap()
-    const user = userEvent.setup()
-    render(<RouteView />)
-    expect(screen.getByRole('checkbox', { name: 'Add profitable stops' })).not.toBeChecked()
-    expect(screen.queryByLabelText('Stops per gap')).not.toBeInTheDocument()
-    expect(suggestedRows()).toHaveLength(0)
-    expect(requested).toEqual([]) // the map is only fetched when the feature is on
-    await user.click(screen.getByRole('button', { name: 'Settings' }))
+    render(<EnRouteView />)
+    expect(screen.queryByRole('checkbox', { name: 'Add profitable stops' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Settings' })).not.toBeInTheDocument()
     expect(screen.getByLabelText('Stops per gap')).toHaveValue('1')
     expect(screen.getByLabelText('Stops in total')).toHaveValue('4')
     expect(screen.getByLabelText('Stops per planetary group')).toHaveValue('1')
     expect(screen.getByLabelText('Max detour')).toHaveValue('150')
+    expect(screen.getByRole('checkbox', { name: 'Safe loading only' })).not.toBeChecked()
+    await waitFor(() => expect(requested.length).toBeGreaterThan(0)) // the search starts at once
   })
 
-  it('is disabled with a reason when the route has fewer than two stops', () => {
+  it('replaces the suggestion sections with a hint to ROUTE for fewer than two stops', () => {
     seed()
     useAppStore.setState({ stops: [1] })
     serveMap()
-    render(<RouteView />)
-    expect(screen.getByRole('checkbox', { name: 'Add profitable stops' })).toBeDisabled()
-    expect(screen.getByText('Add at least two stops first.')).toBeInTheDocument()
+    render(<EnRouteView />)
+    expect(screen.getByText(/Add at least two stops on ROUTE/)).toBeInTheDocument()
+    expect(screen.queryByLabelText('Stops per gap')).not.toBeInTheDocument()
+    // the filters stay usable
+    expect(screen.getByRole('checkbox', { name: 'Include illegal commodities' })).toBeEnabled()
+    expect(screen.getByRole('checkbox', { name: 'Safe loading only' })).toBeEnabled()
   })
 
   it('persists the options and changes them with the steppers', async () => {
     seed()
     serveMap()
     const user = userEvent.setup()
-    render(<RouteView />)
-    await user.click(screen.getByRole('button', { name: 'Settings' }))
+    render(<EnRouteView />)
     await user.click(screen.getByRole('button', { name: 'Increase Stops per gap' }))
     await user.click(screen.getByRole('button', { name: 'Increase Stops in total' }))
     await user.click(screen.getByRole('button', { name: 'Increase Stops per planetary group' }))
@@ -150,15 +154,32 @@ describe('add profitable stops panel', () => {
     })
     expect(JSON.parse(localStorage.getItem('shc:v1') ?? '{}').state.suggest.detourPct).toBe(200)
   })
+
+  it('moves the trade filters here with the same persisted keys', async () => {
+    seed()
+    serveMap()
+    const user = userEvent.setup()
+    render(<EnRouteView />)
+    await user.click(screen.getByRole('checkbox', { name: 'Include illegal commodities' }))
+    await user.click(screen.getByRole('checkbox', { name: 'Include quantum-volatile commodities' }))
+    await user.click(screen.getByRole('checkbox', { name: 'Hide low stock & demand' }))
+    await user.selectOptions(screen.getByLabelText('Max price age'), '3')
+    expect(useAppStore.getState()).toMatchObject({
+      includeIllegal: false,
+      includeVolatileQt: true,
+      hideLowStock: true,
+      maxPriceAgeDays: 3,
+    })
+    const saved = JSON.parse(localStorage.getItem('shc:v1') ?? '{}').state
+    expect(saved).toMatchObject({ includeIllegal: false, hideLowStock: true, maxPriceAgeDays: 3 })
+  })
 })
 
 describe('suggestions in the route list', () => {
   it('loads the map once, then shows a SUGGESTED row with its role and the summary', async () => {
     seed()
     const requested = serveMap()
-    const user = userEvent.setup()
-    render(<RouteView />)
-    await enable(user)
+    render(<EnRouteView />)
     await waitForRows(1)
     const row = suggestedRows()[0]
     expect(row).toHaveTextContent('SUGGESTED')
@@ -183,8 +204,7 @@ describe('suggestions in the route list', () => {
     serveMap()
     useAppStore.setState({ trip: { currentStop: 1, bought: [] } })
     const user = userEvent.setup()
-    render(<RouteView />)
-    await enable(user)
+    render(<EnRouteView />)
     await waitForRows(1)
     await user.click(within(suggestedRows()[0]).getByRole('button', { name: 'Add' }))
     expect(useAppStore.getState().stops).toEqual([1, 3, 2])
@@ -194,7 +214,6 @@ describe('suggestions in the route list', () => {
       expect(screen.getByText('No profitable stops within a 150 % detour')).toBeInTheDocument(),
     )
     expect(suggestedRows()).toHaveLength(0)
-    expect(screen.getAllByRole('button', { name: /^Move stop \d (up|down)$/ })).toHaveLength(6)
   })
 
   it('Add all replaces the route with the suggested one', async () => {
@@ -209,8 +228,7 @@ describe('suggestions in the route list', () => {
     useAppStore.setState({ stops: [1, 2] })
     serveMap()
     const user = userEvent.setup()
-    render(<RouteView />)
-    await enable(user)
+    render(<EnRouteView />)
     await waitFor(() => expect(suggestedRows().length).toBeGreaterThan(0), { timeout: 4000 })
     await user.click(screen.getByRole('button', { name: 'Add all' }))
     const stops = useAppStore.getState().stops
@@ -219,12 +237,11 @@ describe('suggestions in the route list', () => {
     expect(stops).toContain(3)
   })
 
-  it('✕ dismisses a terminal until the route is cleared', async () => {
+  it('✕ dismisses a terminal for this route only', async () => {
     seed()
     serveMap()
     const user = userEvent.setup()
-    render(<RouteView />)
-    await enable(user)
+    const view = render(<EnRouteView />)
     await waitForRows(1)
     await user.click(
       within(suggestedRows()[0]).getByRole('button', { name: /Dismiss Xray Outpost/ }),
@@ -233,26 +250,48 @@ describe('suggestions in the route list', () => {
     expect(useAppStore.getState().stops).toEqual([1, 2]) // dismissing never edits the route
     expect(await screen.findByText('No profitable stops within a 150 % detour')).toBeInTheDocument()
     expect(suggestedRows()).toHaveLength(0)
-    // dismissals are UI state only
+    // dismissals are UI state only: no persisted block list
     expect(localStorage.getItem('shc:v1')).not.toMatch(/dismiss/)
+    // still dismissed after leaving EN ROUTE and coming back to the same route
+    view.unmount()
+    render(<EnRouteView />)
+    await screen.findByText('No profitable stops within a 150 % detour')
+    expect(useSuggestUi.getState().dismissed).toEqual([3])
   })
 
-  it('forgets dismissals when the route is cleared', async () => {
+  it('forgets dismissals when the route is cleared or its fixed stops change', async () => {
     seed()
     serveMap()
-    render(<RouteView />)
+    render(<EnRouteView />)
+    await waitFor(() => expect(useSuggestUi.getState().routeKey).toBe('1,2'))
     useSuggestUi.getState().dismiss(3)
     useAppStore.getState().clearStops()
     await waitFor(() => expect(useSuggestUi.getState().dismissed).toEqual([]))
+
+    useAppStore.getState().addStop(1)
+    useAppStore.getState().addStop(2)
+    await waitFor(() => expect(useSuggestUi.getState().routeKey).toBe('1,2'))
+    useSuggestUi.getState().dismiss(3)
+    useAppStore.getState().addStop(4) // another fixed stop: a different route
+    await waitFor(() => expect(useSuggestUi.getState().dismissed).toEqual([]))
+  })
+
+  it('keeps dismissals when only a dynamic stop is added', async () => {
+    seed()
+    serveMap()
+    render(<EnRouteView />)
+    await waitFor(() => expect(useSuggestUi.getState().routeKey).toBe('1,2'))
+    useSuggestUi.getState().dismiss(3)
+    useAppStore.getState().insertStop(1, 4, 'dynamic')
+    await waitFor(() => expect(routeRows()).toHaveLength(3))
+    expect(useSuggestUi.getState().dismissed).toEqual([3])
   })
 
   it('says so when nothing qualifies and follows the detour setting in the message', async () => {
     seed({ offers: [] })
     serveMap()
     useAppStore.getState().setSuggestOptions({ detourPct: 120 })
-    const user = userEvent.setup()
-    render(<RouteView />)
-    await enable(user)
+    render(<EnRouteView />)
     await waitFor(
       () =>
         expect(screen.getByText('No profitable stops within a 120 % detour')).toBeInTheDocument(),
@@ -263,9 +302,7 @@ describe('suggestions in the route list', () => {
   it('shows "searching…" while the search runs', async () => {
     seed()
     serveMap()
-    const user = userEvent.setup()
-    render(<RouteView />)
-    await enable(user)
+    render(<EnRouteView />)
     expect(screen.getByText('Searching…')).toBeInTheDocument()
     await waitForRows(1)
     expect(screen.queryByText('Searching…')).not.toBeInTheDocument()
@@ -274,9 +311,7 @@ describe('suggestions in the route list', () => {
   it('notes when the map is older than the LIVE game version', async () => {
     seed({ live: '4.11.0' })
     serveMap(['4.10.2'])
-    const user = userEvent.setup()
-    render(<RouteView />)
-    await enable(user)
+    render(<EnRouteView />)
     await waitForRows(1)
     expect(screen.getByText('Map from 4.10.2')).toBeInTheDocument()
   })
@@ -284,28 +319,23 @@ describe('suggestions in the route list', () => {
   it('shows why it cannot work when the map cannot be loaded', async () => {
     seed()
     vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockRejectedValue(new TypeError('offline')))
-    const user = userEvent.setup()
-    render(<RouteView />)
-    await enable(user)
+    render(<EnRouteView />)
     expect(await screen.findByText(/Could not load the terminal map/)).toBeInTheDocument()
     expect(suggestedRows()).toHaveLength(0)
   })
 
-  it('drag reordering still maps to the fixed stops while suggestions are shown', async () => {
+  it('has no drag handle or reorder buttons: reordering stays in ROUTE', async () => {
     seed()
     serveMap()
-    useAppStore.setState({ stops: [1, 4, 2] })
-    const user = userEvent.setup()
-    render(<RouteView />)
-    await enable(user)
-    await waitFor(() => expect(document.querySelectorAll('[data-stop-row]')).toHaveLength(3))
-    await user.click(screen.getByRole('button', { name: 'Move stop 2 up' }))
-    expect(useAppStore.getState().stops).toEqual([4, 1, 2])
+    useAppStore.setState({ stops: [1, 4, 2], origins: ['fixed', 'dynamic', 'fixed'] })
+    render(<EnRouteView />)
+    await waitFor(() => expect(routeRows()).toHaveLength(3))
+    expect(screen.queryByRole('button', { name: /Drag stop|Move stop/ })).not.toBeInTheDocument()
   })
 })
 
-describe('calc settings reach the search worker (revision 14)', () => {
-  it('sends the small-hangar toggle and the stock filter with every request', async () => {
+describe('calc settings reach the search worker', () => {
+  it('sends the small-hangar toggle, the stock filter and the budget with every request', async () => {
     seed()
     serveMap()
     const jobs: SuggestJob[] = []
@@ -316,13 +346,12 @@ describe('calc settings reach the search worker (revision 14)', () => {
       },
       dispose: () => {},
     })
-    useAppStore.setState({ smallHangar: true, hideLowStock: true })
-    const user = userEvent.setup()
-    render(<RouteView />)
-    await enable(user)
+    useAppStore.setState({ smallHangar: true, hideLowStock: true, budget: 250_000 })
+    render(<EnRouteView />)
     await waitFor(() => expect(jobs.length).toBeGreaterThan(0), { timeout: 4000 })
     expect(jobs.at(-1)?.request.calc).toMatchObject({
       smallHangar: true,
+      budget: 250_000,
       options: { hideLowStock: true },
     })
     // changing a setting triggers a new request carrying the new value
@@ -331,51 +360,181 @@ describe('calc settings reach the search worker (revision 14)', () => {
       timeout: 4000,
     })
   })
-})
 
-describe('section order (§7.4)', () => {
-  it('lists the stops first, then Add stop, the route actions and Add profitable stops last', async () => {
+  it('sends "safe loading only" in the options, and toggling it searches again', async () => {
     seed()
     serveMap()
+    const jobs: SuggestJob[] = []
+    setSuggestClient({
+      run: (job) => {
+        jobs.push(job)
+        return Promise.resolve({ kind: 'none', bestFound: false })
+      },
+      dispose: () => {},
+    })
     const user = userEvent.setup()
-    render(<RouteView />)
-    await enable(user)
-    await waitForRows(1)
-    const list = screen.getByRole('list', { name: 'Route stops' })
-    const addStop = screen.getByRole('region', { name: 'Add stop' })
-    const reverse = screen.getByRole('button', { name: 'Reverse route' })
-    const profitable = screen.getByRole('region', { name: 'Add profitable stops' })
-    const before = (a: Node, b: Node) =>
-      expect(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    before(list, addStop)
-    before(addStop, reverse)
-    before(reverse, profitable)
+    render(<EnRouteView />)
+    await waitFor(() => expect(jobs.length).toBeGreaterThan(0), { timeout: 4000 })
+    expect(jobs.at(-1)?.request.options.safeLoadingOnly).toBe(false)
+    await user.click(screen.getByRole('checkbox', { name: 'Safe loading only' }))
+    await waitFor(() => expect(jobs.at(-1)?.request.options.safeLoadingOnly).toBe(true), {
+      timeout: 4000,
+    })
   })
 
-  it('keeps the summary, the budget and ADD ALL inside the profitable-stops section', async () => {
+  it('names "safe loading" when nothing qualifies with it on', async () => {
     seed()
     serveMap()
-    const user = userEvent.setup()
-    render(<RouteView />)
-    await enable(user)
+    useAppStore.getState().setSuggestOptions({ safeLoadingOnly: true })
+    render(<EnRouteView />)
+    // the only suggestion would be the unsafe Xray Outpost
+    expect(
+      await screen.findByText('No profitable stops within a 150 % detour with safe loading', {
+        exact: false,
+      }),
+    ).toBeInTheDocument()
+    expect(suggestedRows()).toHaveLength(0)
+  })
+})
+
+describe('safe loading (§6.8)', () => {
+  it('suggests an unsafe outpost with the option off, marked NO SAFE ZONE', async () => {
+    seed()
+    serveMap()
+    render(<EnRouteView />)
     await waitForRows(1)
-    const section = screen.getByRole('region', { name: 'Add profitable stops' })
-    expect(within(section).getByLabelText('Suggestion summary')).toBeInTheDocument()
+    expect(suggestedRows()[0]).toHaveTextContent('Xray Outpost')
+    expect(suggestedRows()[0]).toHaveTextContent('NO SAFE ZONE')
+  })
+
+  it('marks route stops without safe loading, whether the option is on or off', async () => {
+    seed()
+    serveMap()
+    useAppStore.setState({ stops: [1, 3, 2], origins: ['fixed', 'fixed', 'fixed'] })
+    const user = userEvent.setup()
+    render(<EnRouteView />)
+    const badges = () =>
+      [...document.querySelectorAll('.stops > li')].map((li) =>
+        li.textContent?.includes('NO SAFE ZONE'),
+      )
+    expect(badges()).toEqual([false, true, false])
+    await user.click(screen.getByRole('checkbox', { name: 'Safe loading only' }))
+    expect(badges()).toEqual([false, true, false]) // fixed stops are never filtered
+  })
+})
+
+describe('route rows', () => {
+  it('only dynamic stops have a remove button', async () => {
+    seed()
+    serveMap()
+    useAppStore.setState({ stops: [1, 4, 2], origins: ['fixed', 'dynamic', 'fixed'] })
+    const user = userEvent.setup()
+    render(<EnRouteView />)
+    expect(screen.getAllByRole('button', { name: /^Remove stop/ })).toHaveLength(1)
+    await user.click(screen.getByRole('button', { name: 'Remove stop 2' }))
+    expect(useAppStore.getState().stops).toEqual([1, 2])
+  })
+})
+
+describe('section order (§7.4a)', () => {
+  it('lists the filters, the stop filter, the settings, the route and the summary top to bottom', async () => {
+    seed()
+    serveMap()
+    render(<EnRouteView />)
+    await waitForRows(1)
+    const sections = [
+      screen.getByRole('region', { name: 'Filters' }),
+      screen.getByRole('region', { name: 'Stop filter' }),
+      screen.getByRole('region', { name: 'Suggestion settings' }),
+      screen.getByRole('list', { name: 'Route with suggestions' }),
+      screen.getByRole('region', { name: 'Suggestion summary' }),
+    ]
+    for (let i = 1; i < sections.length; i++) {
+      expect(
+        sections[i - 1].compareDocumentPosition(sections[i]) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy()
+    }
+  })
+
+  it('keeps the summary, the budget and ADD ALL together under the list', async () => {
+    seed()
+    serveMap()
+    render(<EnRouteView />)
+    await waitForRows(1)
+    const section = screen.getByRole('region', { name: 'Suggestion summary' })
     expect(within(section).getByRole('button', { name: 'Add all' })).toBeInTheDocument()
     expect(within(section).getByLabelText('Dynamic stop budget')).toHaveTextContent(
       'dynamic stops 0 / 4 used',
     )
-    // only one summary exists, and it comes after the stop list
-    const list = screen.getByRole('list', { name: 'Route stops' })
     expect(screen.getAllByLabelText('Suggestion summary')).toHaveLength(1)
-    expect(
-      list.compareDocumentPosition(screen.getByLabelText('Suggestion summary')) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy()
+  })
+
+  it('has a CALCULATE TRADES button to the TRADES step', async () => {
+    seed()
+    serveMap()
+    const user = userEvent.setup()
+    render(<EnRouteView />)
+    await user.click(screen.getByRole('button', { name: /Calculate trades/ }))
+    expect(useAppStore.getState().tab).toBe('trades')
   })
 })
 
-describe('accepted dynamic stops keep counting (§6.7, §7.4)', () => {
+describe('the search runs only while EN ROUTE is open (§6.7)', () => {
+  const countingClient = () => {
+    const run = vi.fn<SuggestClient['run']>(() =>
+      Promise.resolve({ kind: 'none', bestFound: false }),
+    )
+    const dispose = vi.fn<SuggestClient['dispose']>()
+    setSuggestClient({ run, dispose })
+    return { run, dispose }
+  }
+
+  it('sends no request and loads no map on the other steps', async () => {
+    seed()
+    const requested = serveMap()
+    const { run } = countingClient()
+    for (const tab of ['ship', 'route', 'trades'] as const) {
+      useAppStore.setState({ tab })
+      const view = render(<App />)
+      await new Promise((resolve) => setTimeout(resolve, 450)) // longer than the debounce
+      view.unmount()
+    }
+    expect(run).not.toHaveBeenCalled()
+    expect(requested.some((u) => u.includes('terminal-map'))).toBe(false)
+  })
+
+  it('starts when EN ROUTE opens and drops the pending result when it closes', async () => {
+    seed()
+    serveMap()
+    const { run, dispose } = countingClient()
+    useAppStore.setState({ tab: 'enroute' })
+    const view = render(<App />)
+    await waitFor(() => expect(run).toHaveBeenCalled(), { timeout: 4000 })
+    view.unmount()
+    expect(dispose).toHaveBeenCalled()
+  })
+
+  it('ignores a persisted enabled flag from the old toggle', async () => {
+    seed()
+    localStorage.setItem(
+      'shc:v1',
+      JSON.stringify({
+        version: 1,
+        state: { tab: 'route', suggest: { enabled: false, perGap: 2 } },
+      }),
+    )
+    await useAppStore.persist.rehydrate()
+    expect(useAppStore.getState().suggest).toEqual({ ...DEFAULT_SUGGEST_OPTIONS, perGap: 2 })
+    const requested = serveMap()
+    const { run } = countingClient()
+    render(<App />) // opens on ROUTE: nothing is searched
+    await new Promise((resolve) => setTimeout(resolve, 450))
+    expect(run).not.toHaveBeenCalled()
+    expect(requested.some((u) => u.includes('terminal-map'))).toBe(false)
+  })
+})
+
+describe('accepted dynamic stops keep counting (§6.7, §7.4a)', () => {
   // Quartz X → Y (500) and Waste Y → B (500): with one stop per gap only Y pays (500);
   // once Y is accepted, X must not be offered although it would add another 500.
   const twoStopOffers = [
@@ -391,20 +550,18 @@ describe('accepted dynamic stops keep counting (§6.7, §7.4)', () => {
     seed({ offers: twoStopOffers })
     serveMap()
     const user = userEvent.setup()
-    render(<RouteView />)
-    await enable(user)
+    render(<EnRouteView />)
     await waitForRows(1)
     expect(suggestedRows()[0]).toHaveTextContent('Yankee Station')
     expect(screen.queryByText('DYNAMIC')).not.toBeInTheDocument()
     await user.click(within(suggestedRows()[0]).getByRole('button', { name: 'Add' }))
     expect(useAppStore.getState().stops).toEqual([1, 4, 2])
     expect(useAppStore.getState().origins).toEqual(['fixed', 'dynamic', 'fixed'])
-    const rows = document.querySelectorAll<HTMLElement>('[data-stop-row]')
+    const rows = routeRows()
     expect(rows[0]).not.toHaveTextContent('DYNAMIC')
     expect(rows[1]).toHaveTextContent('Yankee Station')
     expect(rows[1]).toHaveTextContent('DYNAMIC')
     expect(rows[2]).not.toHaveTextContent('DYNAMIC')
-    // the accepted stop is a normal row: number, reorder buttons, remove
     expect(within(rows[1]).getByRole('button', { name: 'Remove stop 2' })).toBeVisible()
     await waitFor(() =>
       expect(screen.getByLabelText('Dynamic stop budget')).toHaveTextContent(
@@ -417,8 +574,7 @@ describe('accepted dynamic stops keep counting (§6.7, §7.4)', () => {
     seed({ offers: twoStopOffers })
     serveMap()
     const user = userEvent.setup()
-    render(<RouteView />)
-    await enable(user)
+    render(<EnRouteView />)
     await waitForRows(1)
     await user.click(within(suggestedRows()[0]).getByRole('button', { name: 'Add' }))
     await waitFor(() =>
@@ -434,8 +590,7 @@ describe('accepted dynamic stops keep counting (§6.7, §7.4)', () => {
     dynamicRoute()
     useAppStore.getState().setSuggestOptions({ perGap: 2 })
     const user = userEvent.setup()
-    render(<RouteView />)
-    await enable(user)
+    render(<EnRouteView />)
     await waitForRows(1)
     expect(suggestedRows()[0]).toHaveTextContent('Xray Outpost')
     const items = [...document.querySelectorAll('.stops > li')].map((li) =>
@@ -452,8 +607,7 @@ describe('accepted dynamic stops keep counting (§6.7, §7.4)', () => {
     serveMap()
     useAppStore.getState().setSuggestOptions({ perGap: 2 })
     const user = userEvent.setup()
-    render(<RouteView />)
-    await enable(user)
+    render(<EnRouteView />)
     await waitForRows(2)
     await user.click(screen.getByRole('button', { name: 'Add all' }))
     expect(useAppStore.getState().stops).toEqual([1, 3, 4, 2])
@@ -466,20 +620,18 @@ describe('accepted dynamic stops keep counting (§6.7, §7.4)', () => {
     serveMap()
     dynamicRoute()
     useAppStore.getState().setSuggestOptions({ perGap: 2, total: 1 })
-    const user = userEvent.setup()
-    render(<RouteView />)
-    await enable(user)
+    render(<EnRouteView />)
     expect(await screen.findByText('1 of 1 dynamic stops used')).toBeInTheDocument()
     expect(suggestedRows()).toHaveLength(0)
     expect(useAppStore.getState().stops).toEqual([1, 4, 2])
   })
 
-  it('disables the option while fewer than two fixed stops are left', () => {
+  it('shows the hint instead of suggestions while fewer than two fixed stops are left', () => {
     seed()
     serveMap()
     useAppStore.setState({ stops: [1, 4], origins: ['fixed', 'dynamic'] })
-    render(<RouteView />)
-    expect(screen.getByRole('checkbox', { name: 'Add profitable stops' })).toBeDisabled()
+    render(<EnRouteView />)
+    expect(screen.getByText(/Add at least two stops on ROUTE/)).toBeInTheDocument()
   })
 
   it('removing a dynamic stop frees its budget', async () => {
@@ -487,8 +639,7 @@ describe('accepted dynamic stops keep counting (§6.7, §7.4)', () => {
     serveMap()
     dynamicRoute()
     const user = userEvent.setup()
-    render(<RouteView />)
-    await enable(user)
+    render(<EnRouteView />)
     await user.click(screen.getByRole('button', { name: 'Remove stop 2' }))
     await waitForRows(1)
     expect(suggestedRows()[0]).toHaveTextContent('Yankee Station')

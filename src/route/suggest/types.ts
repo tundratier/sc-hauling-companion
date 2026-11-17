@@ -3,7 +3,8 @@ import type { CalcInput } from '../../calc'
 
 /** User options of "add profitable stops" (§6.7), persisted with the other inputs. */
 export interface SuggestOptions {
-  enabled: boolean
+  /** Suggest only terminals that are safe for loading (§6.8). */
+  safeLoadingOnly: boolean
   /** Max dynamic stops between two fixed stops (0–3). */
   perGap: number
   /** Max dynamic stops in total (1–8). */
@@ -15,7 +16,7 @@ export interface SuggestOptions {
 }
 
 export const DEFAULT_SUGGEST_OPTIONS: SuggestOptions = {
-  enabled: false,
+  safeLoadingOnly: false,
   perGap: 1,
   total: 4,
   perGroup: 1,
@@ -24,7 +25,10 @@ export const DEFAULT_SUGGEST_OPTIONS: SuggestOptions = {
 
 export const MAX_ROUTE_STOPS = 10
 
-/** Clamp every option into its documented range (a persisted value may be stale). */
+/**
+ * Clamp every option into its documented range (a persisted value may be stale). Anything
+ * unknown is dropped — notably the `enabled` flag of the old on/off toggle (revision 18).
+ */
 export function normalizeSuggestOptions(o: Partial<SuggestOptions>): SuggestOptions {
   const int = (v: unknown, lo: number, hi: number, fallback: number) =>
     typeof v === 'number' && Number.isFinite(v)
@@ -32,7 +36,7 @@ export function normalizeSuggestOptions(o: Partial<SuggestOptions>): SuggestOpti
       : fallback
   const d = DEFAULT_SUGGEST_OPTIONS
   return {
-    enabled: o.enabled === true,
+    safeLoadingOnly: o.safeLoadingOnly === true,
     perGap: int(o.perGap, 0, 3, d.perGap),
     total: int(o.total, 1, 8, d.total),
     perGroup: int(o.perGroup, 1, 3, d.perGroup),

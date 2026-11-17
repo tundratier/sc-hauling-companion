@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
 import commodities from '../__fixtures__/commodities.json'
+import outposts from '../__fixtures__/outposts.json'
 import pricesAll from '../__fixtures__/pricesAll.json'
 import terminals from '../__fixtures__/terminals.json'
 import vehicles from '../__fixtures__/vehicles.json'
 import {
+  mapArmisticeOutposts,
   mapCommodities,
   mapGameVersions,
   mapPrices,
@@ -214,5 +216,46 @@ describe('mapGameVersions', () => {
   it('tolerates garbage', () => {
     expect(mapGameVersions(null)).toEqual({ live: '', ptu: '' })
     expect(mapGameVersions([])).toEqual({ live: '', ptu: '' })
+  })
+})
+
+describe('safe loading from E2 joined with E6 (§6.8)', () => {
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  const armistice = mapArmisticeOutposts(outposts.data)
+  const result = mapTerminals(terminals.data, armistice)
+  warn.mockRestore()
+  const safe = (id: number) => result.find((t) => t.id === id)!.safeLoading
+
+  it('reads the outposts with an armistice zone (0/1 as numbers or strings, bad ids dropped)', () => {
+    expect([...armistice].sort((a, b) => a - b)).toEqual([302, 303])
+    expect(mapArmisticeOutposts([{ id: 1, is_armistice: 1 }, { id: 2 }, 'x', null])).toEqual(
+      new Set([1]),
+    )
+  })
+
+  it('maps id_outpost', () => {
+    expect(result.find((t) => t.id === 13)!.idOutpost).toBe(301)
+    expect(result.find((t) => t.id === 10)!.idOutpost).toBe(0)
+  })
+
+  it('station → safe, city → safe', () => {
+    expect(safe(10)).toBe(true) // station
+    expect(safe(11)).toBe(true) // city
+  })
+
+  it('outpost with an armistice zone → safe, without → unsafe', () => {
+    expect(safe(17)).toBe(true) // outpost 302, armistice
+    expect(safe(13)).toBe(false) // outpost 301, none
+  })
+
+  it('an outpost id missing from E6 → unsafe', () => {
+    const [t] = mapTerminals([{ id: 50, id_outpost: 999 }], armistice)
+    expect(t).toMatchObject({ idOutpost: 999, safeLoading: false })
+  })
+
+  it('is unsafe without E6 data unless the terminal is at a station or in a city', () => {
+    const plain = mapTerminals(terminals.data)
+    expect(plain.find((t) => t.id === 10)!.safeLoading).toBe(true)
+    expect(plain.find((t) => t.id === 17)!.safeLoading).toBe(false)
   })
 })

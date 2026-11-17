@@ -547,6 +547,7 @@ describe('droppedLines', () => {
     lowStock: 0,
     lowDemand: 0,
     elevator: 0,
+    budget: 0,
   }
 
   it('pluralizes and skips zero counts', () => {
@@ -671,5 +672,147 @@ describe('elevator caps in the trade lines (criterion 19)', () => {
     expect(screen.getByRole('list', { name: 'Trades not shown' })).toHaveTextContent(
       '1 hidden by the low-stock filter',
     )
+  })
+})
+
+describe('budget (SPEC §6.3, §7.5)', () => {
+  // 46 SCU free, boxes 4–16: a full load is 44 SCU = 123,640 aUEC; 100,000 buys 35 → 32 SCU
+  const withBudget = (budget: number | null) => {
+    seed({ offers: laranite, boxMin: 4 })
+    useAppStore.setState({ budget })
+  }
+
+  it('shows the budget in the summary header only when set', () => {
+    withBudget(100_000)
+    const { unmount } = render(<TradesView />)
+    expect(screen.getByRole('region', { name: 'Summary' })).toHaveTextContent(
+      'boxes 4–16 SCU · budget 100,000 aUEC',
+    )
+    unmount()
+    withBudget(null)
+    render(<TradesView />)
+    expect(screen.getByRole('region', { name: 'Summary' })).not.toHaveTextContent('budget')
+  })
+
+  it('lists a capped trade with the affordable load, a BUDGET badge and its capped profit', () => {
+    withBudget(100_000)
+    render(<TradesView />)
+    const line = lines(1)[0]
+    expect(line).toHaveTextContent('BUDGET')
+    expect(profits(1)[0]).toContain('16,160') // 32 SCU × 505
+    expect(line.querySelector('.badge')).not.toBeNull()
+  })
+
+  it('gives an uncapped line no BUDGET badge', () => {
+    withBudget(1_000_000)
+    render(<TradesView />)
+    expect(lines(1)[0]).not.toHaveTextContent('BUDGET')
+    expect(profits(1)[0]).toContain('22,220') // 44 SCU × 505
+  })
+
+  it('names the cap in the details, and the budget as the reason for unused space', async () => {
+    withBudget(100_000)
+    const user = userEvent.setup()
+    render(<TradesView />)
+    await user.click(within(lines(1)[0]).getByRole('button', { name: /details/i }))
+    expect(lines(1)[0]).toHaveTextContent(
+      '32 of 46 SCU · budget 100,000 aUEC (full load 44 SCU, 123,640 aUEC)',
+    )
+    expect(lines(1)[0]).toHaveTextContent('14 SCU unused · budget')
+    expect(lines(1)[0]).not.toHaveTextContent('min box')
+  })
+
+  it('counts and names trades the budget cannot buy a single box of', () => {
+    withBudget(2_000) // a 4 SCU box costs 11,240
+    render(<TradesView />)
+    expect(screen.getByText('No profitable trades along this route.')).toBeInTheDocument()
+    expect(
+      screen.getByText('1 trade costs more than your budget for a single box'),
+    ).toBeInTheDocument()
+    // the budget is no filter of EN ROUTE: no link on that line
+    expect(
+      within(screen.getByText(/costs more than your budget/)).queryByRole('button'),
+    ).not.toBeInTheDocument()
+  })
+
+  it('droppedLines names the budget reason', () => {
+    const none = {
+      boxTooLarge: 0,
+      boxTooSmall: 0,
+      illegal: 0,
+      volatileQt: 0,
+      priceAge: 0,
+      lowStock: 0,
+      lowDemand: 0,
+      elevator: 0,
+      budget: 0,
+    }
+    expect(droppedLines({ ...none, budget: 3 })).toEqual([
+      '3 trades cost more than your budget for a single box',
+    ])
+  })
+})
+
+describe('filter summary and EN ROUTE links (SPEC §7.5)', () => {
+  it('shows nothing while all filters are at their defaults', () => {
+    seed({ offers: laranite })
+    render(<TradesView />)
+    expect(screen.queryByRole('button', { name: 'EN ROUTE' })).not.toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Summary' })).not.toHaveTextContent('hidden')
+  })
+
+  it('lists the filters that differ from the defaults and links to EN ROUTE', async () => {
+    seed({ offers: laranite })
+    useAppStore.setState({ includeIllegal: false, hideLowStock: true, maxPriceAgeDays: 3 })
+    const user = userEvent.setup()
+    render(<TradesView />)
+    const summary = screen.getByRole('region', { name: 'Summary' })
+    expect(summary).toHaveTextContent('illegal hidden · low stock & demand hidden · prices ≤ 3 d')
+    await user.click(within(summary).getByRole('button', { name: 'EN ROUTE' }))
+    expect(useAppStore.getState().tab).toBe('enroute')
+  })
+
+  it('names quantum-volatile only when it is switched on', () => {
+    seed({ offers: laranite })
+    useAppStore.setState({ includeVolatileQt: true })
+    render(<TradesView />)
+    expect(screen.getByRole('region', { name: 'Summary' })).toHaveTextContent(
+      'quantum-volatile shown',
+    )
+  })
+
+  it('links the filter reasons of the dropped trades to EN ROUTE', async () => {
+    seed({
+      offers: [
+        buyOffer(1, 1, 100, { dateModified: ago(10) }),
+        sellOffer(1, 3, 150, { dateModified: ago(10) }),
+      ],
+    })
+    useAppStore.setState({ maxPriceAgeDays: 1 })
+    const user = userEvent.setup()
+    render(<TradesView />)
+    const item = screen.getByText(/hidden by the price-age filter/)
+    await user.click(within(item).getByRole('button', { name: 'EN ROUTE' }))
+    expect(useAppStore.getState().tab).toBe('enroute')
+  })
+})
+
+describe('NO SAFE ZONE in the stop header (SPEC §6.8)', () => {
+  it('marks stops that are not safe for loading, whatever the filter says', () => {
+    seed({ offers: laranite })
+    const { terminals } = useDataStore.getState().staticData!.data
+    useDataStore.setState({
+      staticData: {
+        ...useDataStore.getState().staticData!,
+        data: {
+          ...useDataStore.getState().staticData!.data,
+          terminals: terminals.map((t) => (t.id === 2 ? { ...t, safeLoading: false } : t)),
+        },
+      },
+    })
+    render(<TradesView />)
+    expect(section(1)).not.toHaveTextContent('NO SAFE ZONE')
+    expect(section(2)).toHaveTextContent('NO SAFE ZONE')
+    expect(section(3)).not.toHaveTextContent('NO SAFE ZONE')
   })
 })

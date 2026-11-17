@@ -127,7 +127,7 @@ describe('persistence', () => {
     useAppStore.getState().addStop(10)
     useAppStore.getState().setTab('route')
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY)!)
-    expect(saved.version).toBe(1)
+    expect(saved.version).toBe(2)
     expect(saved.state).toMatchObject({
       tab: 'route',
       vehicleId: 100,
@@ -146,5 +146,76 @@ describe('persistence', () => {
     )
     await useAppStore.persist.rehydrate()
     expect(useAppStore.getState()).toMatchObject({ tab: 'trades', stops: [1, 2], freeScu: 12 })
+  })
+})
+
+describe('migration to version 2 (four steps, SPEC §7.2)', () => {
+  const rehydrate = async (version: number, state: Record<string, unknown>) => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ version, state }))
+    await useAppStore.persist.rehydrate()
+    return useAppStore.getState()
+  }
+
+  it.each(['ship', 'route', 'trades'] as const)('keeps the stored tab %s', async (tab) => {
+    expect((await rehydrate(1, { tab, stops: [1, 2] })).tab).toBe(tab)
+  })
+
+  it('keeps the new EN ROUTE tab and falls back to SHIP for an unknown one', async () => {
+    expect((await rehydrate(2, { tab: 'enroute' })).tab).toBe('enroute')
+    expect((await rehydrate(1, { tab: 'settings' })).tab).toBe('ship')
+  })
+
+  it('keeps everything else, the trade filters included', async () => {
+    const state = await rehydrate(1, {
+      tab: 'trades',
+      stops: [3, 4, 5],
+      freeScu: 24,
+      includeIllegal: false,
+      includeVolatileQt: true,
+      hideLowStock: true,
+      maxPriceAgeDays: 3,
+      smallHangar: true,
+    })
+    expect(state).toMatchObject({
+      stops: [3, 4, 5],
+      freeScu: 24,
+      includeIllegal: false,
+      includeVolatileQt: true,
+      hideLowStock: true,
+      maxPriceAgeDays: 3,
+      smallHangar: true,
+      budget: null,
+    })
+  })
+
+  it('drops the old on/off flag of the suggestions and keeps their settings', async () => {
+    const state = await rehydrate(1, {
+      suggest: { enabled: true, perGap: 2, total: 5, perGroup: 1, detourPct: 200 },
+    })
+    expect(state.suggest).toEqual({
+      safeLoadingOnly: false,
+      perGap: 2,
+      total: 5,
+      perGroup: 1,
+      detourPct: 200,
+    })
+    expect(state.suggest).not.toHaveProperty('enabled')
+  })
+})
+
+describe('budget (SPEC §7.3)', () => {
+  it('defaults to no limit, keeps whole aUEC and is persisted', () => {
+    expect(useAppStore.getState().budget).toBeNull()
+    useAppStore.getState().setBudget(250_000.7)
+    expect(useAppStore.getState().budget).toBe(250_000)
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).state.budget).toBe(250_000)
+  })
+
+  it('treats empty, zero and invalid values as no limit', () => {
+    for (const v of [null, 0, -5, Number.NaN]) {
+      useAppStore.getState().setBudget(100)
+      useAppStore.getState().setBudget(v)
+      expect(useAppStore.getState().budget).toBeNull()
+    }
   })
 })

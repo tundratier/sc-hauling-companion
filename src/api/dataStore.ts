@@ -1,10 +1,18 @@
 import type { Commodity, GameVersions, PriceOffer, Terminal, Vehicle } from '../domain/types'
 import { SCHEMA_VERSION, cacheGet, cacheSet, isFresh, type CacheEntry } from './cache'
-import { mapCommodities, mapGameVersions, mapPrices, mapTerminals, mapVehicles } from './mappers'
+import {
+  mapArmisticeOutposts,
+  mapCommodities,
+  mapGameVersions,
+  mapPrices,
+  mapTerminals,
+  mapVehicles,
+} from './mappers'
 import {
   UexError,
   fetchCommodities,
   fetchGameVersions,
+  fetchOutposts,
   fetchPricesAll,
   fetchTerminals,
   fetchVehicles,
@@ -12,9 +20,10 @@ import {
 
 /**
  * Shape of the cached static data. Bumped to 2 when terminals gained `idSpaceStation` and `idCity`
- * (elevator caps); the prices entry keeps its shape and its cache.
+ * (elevator caps), and to 3 for `idOutpost` and `safeLoading` (E6, safe loading). The prices
+ * entry keeps its shape and its cache.
  */
-export const STATIC_SCHEMA_VERSION = 2
+export const STATIC_SCHEMA_VERSION = 3
 export const STATIC_KEY = `static:v${STATIC_SCHEMA_VERSION}`
 export const PRICES_KEY = `prices:v${SCHEMA_VERSION}`
 export const STATIC_TTL_MS = 24 * 60 * 60 * 1000
@@ -146,23 +155,24 @@ async function loadDataset<T>(cfg: DatasetConfig<T>, opts: LoadOptions<T>): Prom
 }
 
 async function fetchStatic(signal?: AbortSignal) {
-  const [commodities, terminals, vehicles, versions] = await Promise.all([
+  const [commodities, terminals, vehicles, versions, outposts] = await Promise.all([
     fetchCommodities(signal),
     fetchTerminals(signal),
     fetchVehicles(signal),
     fetchGameVersions(signal),
+    fetchOutposts(signal),
   ])
   const gameVersions = mapGameVersions(versions)
   const data: StaticData = {
     commodities: mapCommodities(commodities),
-    terminals: mapTerminals(terminals),
+    terminals: mapTerminals(terminals, mapArmisticeOutposts(outposts)),
     vehicles: mapVehicles(vehicles).filter((v) => v.scu > 0),
     gameVersions,
   }
   return { data, gameVersion: gameVersions.live || null }
 }
 
-/** Commodities, terminals, vehicles and game version: one entry, 4 requests, 24 h TTL. */
+/** Commodities, terminals, vehicles, game version and outposts: one entry, 5 requests, 24 h TTL. */
 export function loadStaticData(opts: LoadOptions<StaticData> = {}): Promise<Loaded<StaticData>> {
   return loadDataset<StaticData>(
     {

@@ -45,6 +45,8 @@ export const terminal = (id: number, over: Partial<Terminal> = {}): Terminal => 
   // a station by default (32 SCU elevators unless a test asks for a small hangar)
   idSpaceStation: 1,
   idCity: 0,
+  idOutpost: 0,
+  safeLoading: true,
   hasFreightElevator: false,
   isAutoLoad: false,
   ...over,
@@ -108,6 +110,7 @@ export const makeInput = (
   shipBoxSizes: [1, 2, 4, 8, 16, 24, 32],
   boxRange: { min: 1, max: 32 },
   smallHangar: false,
+  budget: null,
   ...over,
   options: { ...DEFAULT_CALC_OPTIONS, ...over.options },
 })

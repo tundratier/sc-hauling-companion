@@ -1,6 +1,7 @@
 import { vi, type Mock } from 'vitest'
 import commodities from '../__fixtures__/commodities.json'
 import gameVersions from '../__fixtures__/gameVersions.json'
+import outposts from '../__fixtures__/outposts.json'
 import pricesAll from '../__fixtures__/pricesAll.json'
 import terminals from '../__fixtures__/terminals.json'
 import vehicles from '../__fixtures__/vehicles.json'
@@ -13,6 +14,7 @@ const bodies: Record<string, unknown> = {
   '/2.0/terminals': terminals,
   '/2.0/vehicles': vehicles,
   '/2.0/game_versions': gameVersions,
+  '/2.0/outposts': outposts,
   '/2.0/commodities_prices_all': pricesAll,
 }
 

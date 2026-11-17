@@ -370,6 +370,7 @@ describe('calculate', () => {
       lowStock: 0,
       lowDemand: 0,
       elevator: 0,
+      budget: 0,
     })
   })
 

@@ -4,6 +4,7 @@ import { Combobox } from '../components/Combobox'
 import { DataGate } from '../components/DataGate'
 import { NumberStepper } from '../components/NumberStepper'
 import { BoxRangeSlider } from '../components/BoxRangeSlider'
+import { BudgetField } from '../components/BudgetField'
 import { useNow } from '../hooks/useNow'
 import { InstallButton } from '../pwa/InstallButton'
 import { searchVehicles } from '../domain/search'
@@ -13,14 +14,6 @@ import { MAX_FREE_SCU_NO_SHIP, useAppStore } from '../state/useAppStore'
 import { useDataStore } from '../state/useDataStore'
 
 const QUICK_PERCENTS = [25, 50, 75, 100]
-const PRICE_AGE_OPTIONS: { value: number | null; label: string }[] = [
-  { value: null, label: 'Any age' },
-  { value: 1, label: '1 day' },
-  { value: 3, label: '3 days' },
-  { value: 7, label: '7 days' },
-  { value: 14, label: '14 days' },
-]
-
 export const boxesLabel = (v: Vehicle) =>
   v.containerSizes ? `boxes ≤${Math.max(...v.containerSizes)}` : 'boxes unknown'
 
@@ -123,55 +116,8 @@ function ShipForm() {
         </p>
       </section>
 
-      <section className="panel stack" aria-label="Filters">
-        <span className="label">Filters</span>
-        <label className="toggle">
-          <input
-            type="checkbox"
-            checked={app.includeIllegal}
-            onChange={(e) => app.setIncludeIllegal(e.target.checked)}
-          />
-          <span>Include illegal commodities</span>
-        </label>
-        <label className="toggle">
-          <input
-            type="checkbox"
-            checked={app.includeVolatileQt}
-            onChange={(e) => app.setIncludeVolatileQt(e.target.checked)}
-          />
-          <span>Include quantum-volatile commodities</span>
-        </label>
-        <label className="toggle">
-          <input
-            type="checkbox"
-            checked={app.hideLowStock}
-            onChange={(e) => app.setHideLowStock(e.target.checked)}
-          />
-          <span>Hide low stock &amp; demand</span>
-        </label>
-        <p className="muted fineprint">
-          Hides trades where the buy terminal reports low or no stock, or the sell terminal low or
-          no demand — for stress-free hauling
-        </p>
-        <div>
-          <label className="label" htmlFor="max-age">
-            Max price age
-          </label>
-          <select
-            id="max-age"
-            className="input"
-            value={app.maxPriceAgeDays ?? ''}
-            onChange={(e) =>
-              app.setMaxPriceAgeDays(e.target.value === '' ? null : Number(e.target.value))
-            }
-          >
-            {PRICE_AGE_OPTIONS.map((o) => (
-              <option key={o.label} value={o.value ?? ''}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        </div>
+      <section className="panel stack" aria-label="Budget">
+        <BudgetField value={app.budget} onChange={app.setBudget} />
       </section>
 
       <DataControls />

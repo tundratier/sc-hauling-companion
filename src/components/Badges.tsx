@@ -21,6 +21,14 @@ export function haulBadges(haul: Haul): BadgeSpec[] {
   if (haul.flags.illegal)
     badges.push({ key: 'illegal', label: 'ILLEGAL', className: 'badge--illegal' })
   if (haul.skips > 0) badges.push({ key: 'skips', label: `SKIPS ${haul.skips}`, className: '' })
+  if (haul.budgetCap) {
+    badges.push({
+      key: 'budget',
+      label: 'BUDGET',
+      className: '',
+      title: 'The load is capped by your budget',
+    })
+  }
   if (haul.flags.stale) {
     badges.push({
       key: 'stale',
@@ -56,6 +64,24 @@ export function haulBadges(haul: Haul): BadgeSpec[] {
     })
   }
   return badges
+}
+
+/**
+ * Chips of a route stop: `DYNAMIC` for an accepted suggestion (it uses the dynamic budget) and
+ * `NO SAFE ZONE` when loading there isn't protected (SPEC §6.8). `safe` is false for those only.
+ */
+export function StopBadges({ dynamic, safe }: { dynamic?: boolean; safe: boolean }) {
+  if (!dynamic && safe) return null
+  return (
+    <div className="stop__badges">
+      {dynamic && <span className="badge">DYNAMIC</span>}
+      {!safe && (
+        <span className="badge badge--warn" title="No armistice zone and no hangar">
+          NO SAFE ZONE
+        </span>
+      )}
+    </div>
+  )
 }
 
 export const MAX_COLLAPSED_BADGES = 3
