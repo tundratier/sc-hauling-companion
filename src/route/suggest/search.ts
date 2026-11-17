@@ -112,6 +112,7 @@ export function suggestStops(req: SuggestRequest, env: SuggestEnv): SuggestOutco
     req.dismissed,
     env.map,
     env.data,
+    options.safeLoadingOnly,
   )
   const acceptedInGap = (g: number) => accepted.filter((a) => a.afterFixed === g).length
   const gapCandidates: number[][] = [] // terminal ids per gap

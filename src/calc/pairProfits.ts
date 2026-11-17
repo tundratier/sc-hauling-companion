@@ -1,6 +1,5 @@
 import { STD_BOX_SIZES } from '../domain/types'
-import { maxFillable } from './boxes'
-import { allowedBoxes, filterReason } from './candidates'
+import { allowedBoxes, filterReason, loadQuantity } from './candidates'
 import type { CalcData, CalcInput } from './types'
 
 /** Best haul between every ordered pair of terminals. */
@@ -21,7 +20,10 @@ export interface PairProfits {
  */
 export function pairProfits(
   ids: number[],
-  input: Pick<CalcInput, 'freeScu' | 'shipBoxSizes' | 'boxRange' | 'smallHangar' | 'options'>,
+  input: Pick<
+    CalcInput,
+    'freeScu' | 'shipBoxSizes' | 'boxRange' | 'smallHangar' | 'budget' | 'options'
+  >,
   data: CalcData,
   nowSec: number,
 ): PairProfits {
@@ -54,7 +56,7 @@ export function pairProfits(
           input.boxRange,
           input.smallHangar,
         )
-        const qty = maxFillable(cap, boxSizes)
+        const { qty } = loadQuantity(cap, boxSizes, buy.priceBuy, input.budget)
         const total = margin * qty
         const cell = a * n + b
         if (total > profit[cell]) {

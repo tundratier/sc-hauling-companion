@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { buildStaticIndexes } from '../api/indexes'
-import { groupByStop, type DroppedCounts, type HaulSortKey } from '../calc'
+import { groupByStop, type CalcOptions, type DroppedCounts, type HaulSortKey } from '../calc'
 import { DataGate } from '../components/DataGate'
 import { StopSection } from '../components/StopSection'
 import { useTrades } from '../hooks/useTrades'
@@ -18,27 +18,57 @@ const SORTS: { key: HaulSortKey; label: string }[] = [
   { key: 'investment', label: 'Investment' },
 ]
 
-/** Why trades are missing: counted by reason (box size, elevator, illegal, volatile, price age, low stock). */
-export function droppedLines(d: DroppedCounts): string[] {
-  const lines: string[] = []
+/** One line of "why trades are missing"; `filter` lines are fixed on EN ROUTE (§7.5). */
+export interface DroppedReason {
+  text: string
+  filter: boolean
+}
+
+/**
+ * Why trades are missing: counted by reason (box size, elevator, budget, illegal, volatile,
+ * price age, low stock, low demand).
+ */
+export function droppedReasons(d: DroppedCounts): DroppedReason[] {
+  const lines: DroppedReason[] = []
+  const add = (text: string, filter: boolean) => lines.push({ text, filter })
   if (d.boxTooLarge > 0)
-    lines.push(
+    add(
       `${d.boxTooLarge} trade${d.boxTooLarge === 1 ? '' : 's'} need bigger boxes than your ship takes`,
+      false,
     )
   if (d.boxTooSmall > 0)
-    lines.push(
+    add(
       `${d.boxTooSmall} trade${d.boxTooSmall === 1 ? ' only comes' : 's only come'} in boxes smaller than your minimum`,
+      false,
     )
   if (d.elevator > 0)
-    lines.push(
+    add(
       `${d.elevator} trade${d.elevator === 1 ? '' : 's'} need boxes bigger than the cargo elevators take`,
+      false,
     )
-  if (d.illegal > 0) lines.push(`${d.illegal} hidden by the illegal-commodities filter`)
-  if (d.volatileQt > 0) lines.push(`${d.volatileQt} hidden by the quantum-volatile filter`)
-  if (d.priceAge > 0) lines.push(`${d.priceAge} hidden by the price-age filter`)
-  if (d.lowStock > 0) lines.push(`${d.lowStock} hidden by the low-stock filter`)
-  if (d.lowDemand > 0) lines.push(`${d.lowDemand} hidden by the low-demand filter`)
+  if (d.budget > 0)
+    add(
+      `${d.budget} trade${d.budget === 1 ? ' costs' : 's cost'} more than your budget for a single box`,
+      false,
+    )
+  if (d.illegal > 0) add(`${d.illegal} hidden by the illegal-commodities filter`, true)
+  if (d.volatileQt > 0) add(`${d.volatileQt} hidden by the quantum-volatile filter`, true)
+  if (d.priceAge > 0) add(`${d.priceAge} hidden by the price-age filter`, true)
+  if (d.lowStock > 0) add(`${d.lowStock} hidden by the low-stock filter`, true)
+  if (d.lowDemand > 0) add(`${d.lowDemand} hidden by the low-demand filter`, true)
   return lines
+}
+
+export const droppedLines = (d: DroppedCounts): string[] => droppedReasons(d).map((r) => r.text)
+
+/** The trade filters that differ from their defaults: `illegal hidden · prices ≤ 3 d` (§7.5). */
+export function filterSummary(o: CalcOptions): string {
+  const parts: string[] = []
+  if (!o.includeIllegal) parts.push('illegal hidden')
+  if (o.includeVolatileQt) parts.push('quantum-volatile shown')
+  if (o.hideLowStock) parts.push('low stock & demand hidden')
+  if (o.maxPriceAgeDays !== null) parts.push(`prices ≤ ${o.maxPriceAgeDays} d`)
+  return parts.join(' · ')
 }
 
 function TradesContent() {
@@ -68,7 +98,8 @@ function TradesContent() {
   )
 
   const routeText = input.stops.map((id) => shortName(terminalById.get(id), id)).join(' → ')
-  const dropped = droppedLines(result.dropped)
+  const dropped = droppedReasons(result.dropped)
+  const filters = filterSummary(input.options)
   const board = onBoard(trip)
 
   const summary = (
@@ -78,7 +109,16 @@ function TradesContent() {
         Free cargo {formatInt(input.freeScu)} SCU ·{' '}
         {vehicle ? vehicle.nameFull : 'no ship selected'} · boxes{' '}
         {boxRangeText(input.boxRange.min, input.boxRange.max)} SCU
+        {input.budget !== null && ` · budget ${formatInt(input.budget)} aUEC`}
       </p>
+      {filters && (
+        <p className="num muted trades__filters">
+          {filters}{' '}
+          <button type="button" className="link" onClick={() => setTab('enroute')}>
+            EN ROUTE
+          </button>
+        </p>
+      )}
       {input.stops.length >= 2 && (
         <p className="num trades__progress">
           AT STOP {trip.currentStop + 1} OF {input.stops.length}
@@ -138,8 +178,18 @@ function TradesContent() {
   const droppedNote =
     dropped.length > 0 ? (
       <ul className="dropped muted" aria-label="Trades not shown">
-        {dropped.map((line) => (
-          <li key={line}>{line}</li>
+        {dropped.map((reason) => (
+          <li key={reason.text}>
+            {reason.text}
+            {reason.filter && (
+              <>
+                {' '}
+                <button type="button" className="link" onClick={() => setTab('enroute')}>
+                  EN ROUTE
+                </button>
+              </>
+            )}
+          </li>
         ))}
       </ul>
     ) : null
@@ -204,6 +254,7 @@ function TradesContent() {
             stops={input.stops}
             freeScu={input.freeScu}
             minBox={input.boxRange.min}
+            budget={input.budget}
             now={now}
             trip={trip}
             onToggle={toggleBought}

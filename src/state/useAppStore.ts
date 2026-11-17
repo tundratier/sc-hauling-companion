@@ -20,13 +20,17 @@ import {
   type TripState,
 } from '../trip/tripReducer'
 
-export type Tab = 'ship' | 'route' | 'trades'
+export type Tab = 'ship' | 'route' | 'enroute' | 'trades'
 
+/** The four steps of the use case (SPEC §7.2). */
 export const TABS: { id: Tab; label: string }[] = [
   { id: 'ship', label: 'Ship' },
   { id: 'route', label: 'Route' },
+  { id: 'enroute', label: 'En route' },
   { id: 'trades', label: 'Trades' },
 ]
+
+const isTab = (value: unknown): value is Tab => TABS.some((t) => t.id === value)
 
 export const MAX_STOPS = 10
 export const MIN_STOPS = 2
@@ -51,6 +55,8 @@ export interface AppState {
    * from the ship's `pad_type` whenever the ship changes; the user can override it.
    */
   smallHangar: boolean
+  /** Max aUEC for one load; null = no limit (§6.3). */
+  budget: number | null
   /** Opt-in filter: hide hauls whose buy row reports NO STOCK? or LOW STOCK? (§6.1). */
   hideLowStock: boolean
   /** Optional price age filter in days; null = off. */
@@ -76,6 +82,7 @@ export interface AppState {
   setIncludeIllegal: (v: boolean) => void
   setIncludeVolatileQt: (v: boolean) => void
   setSmallHangar: (v: boolean) => void
+  setBudget: (budget: number | null) => void
   setHideLowStock: (v: boolean) => void
   setMaxPriceAgeDays: (days: number | null) => void
   setShowUnavailableTerminals: (v: boolean) => void
@@ -142,6 +149,7 @@ export const useAppStore = create<AppState>()(
       includeIllegal: true,
       includeVolatileQt: false,
       smallHangar: false,
+      budget: null,
       hideLowStock: false,
       maxPriceAgeDays: null,
       showUnavailableTerminals: false,
@@ -169,6 +177,7 @@ export const useAppStore = create<AppState>()(
       setIncludeIllegal: (includeIllegal) => set({ includeIllegal }),
       setIncludeVolatileQt: (includeVolatileQt) => set({ includeVolatileQt }),
       setSmallHangar: (smallHangar) => set({ smallHangar }),
+      setBudget: (budget) => set({ budget: normalizeBudget(budget) }),
       setHideLowStock: (hideLowStock) => set({ hideLowStock }),
       setMaxPriceAgeDays: (maxPriceAgeDays) => set({ maxPriceAgeDays }),
       setShowUnavailableTerminals: (showUnavailableTerminals) => set({ showUnavailableTerminals }),
@@ -231,12 +240,13 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: STORAGE_KEY,
-      version: 1,
+      // 2: four tabs, the filters move to EN ROUTE, the suggestions lose their on/off toggle
+      version: 2,
+      migrate: (persisted) => migratePersisted(persisted),
       // `origins` was added without a version bump: state saved before it has none, and every
       // saved stop then counts as entered by the user (`fixed`).
       merge: (persisted, current) => {
-        const saved = savedState(persisted)
-        const merged = { ...current, ...saved }
+        const merged = { ...current, ...migratePersisted(persisted) }
         return { ...merged, origins: normalizeOrigins(merged.stops, merged.origins) }
       },
       partialize: (s) => ({
@@ -249,6 +259,7 @@ export const useAppStore = create<AppState>()(
         includeIllegal: s.includeIllegal,
         includeVolatileQt: s.includeVolatileQt,
         smallHangar: s.smallHangar,
+        budget: s.budget,
         hideLowStock: s.hideLowStock,
         maxPriceAgeDays: s.maxPriceAgeDays,
         showUnavailableTerminals: s.showUnavailableTerminals,
@@ -270,9 +281,27 @@ export function normalizeBoxRange(min: number, max: number): { boxMin: number; b
   return { boxMin: Math.min(a, b), boxMax: Math.max(a, b) }
 }
 
-/** What localStorage handed back, as a loose partial state (anything else counts as empty). */
-function savedState(value: unknown): Partial<AppState> {
-  return typeof value === 'object' && value !== null ? { ...value } : {}
+/** A usable budget is a positive whole number of aUEC; anything else means "no limit". */
+export function normalizeBudget(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 1
+    ? Math.floor(value)
+    : null
+}
+
+/**
+ * What localStorage handed back, made fit for this version (anything else counts as empty):
+ * an unknown tab falls back to SHIP (`ship`, `route` and `trades` keep their view), the
+ * suggestion options lose the old `enabled` flag, the budget is checked. Every other key,
+ * the trade filters included, stays as saved.
+ */
+export function migratePersisted(value: unknown): AppState {
+  const saved: Partial<AppState> = typeof value === 'object' && value !== null ? { ...value } : {}
+  if ('tab' in saved && !isTab(saved.tab)) saved.tab = 'ship'
+  if (saved.suggest !== undefined) saved.suggest = normalizeSuggestOptions({ ...saved.suggest })
+  if ('budget' in saved) saved.budget = normalizeBudget(saved.budget)
+  // zustand merges the result into the full state (functions included) afterwards
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  return saved as AppState
 }
 
 /** Only pad S counts as a small hangar (not XS, not M); unknown pads preset to off (§7.3). */

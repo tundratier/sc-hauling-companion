@@ -13,6 +13,8 @@ interface OptionLineProps {
   freeScu: number
   /** Selected minimum box size (for the "unused SCU" hint). */
   minBox: number
+  /** The budget the quantity may be capped by (null = none). */
+  budget?: number | null
   now: number
   /** Marked as bought (trip mode). */
   bought?: boolean
@@ -20,9 +22,9 @@ interface OptionLineProps {
   onToggle?: () => void
 }
 
-function Field({ label, value }: { label: string; value: string }) {
+function Field({ label, value, wide = false }: { label: string; value: string; wide?: boolean }) {
   return (
-    <div className="field">
+    <div className={wide ? 'field field--wide' : 'field'}>
       <span className="label">{label}</span>
       <span className="num">{value}</span>
     </div>
@@ -33,6 +35,17 @@ function Field({ label, value }: { label: string; value: string }) {
 export function boxBreakdown(haul: Haul): string {
   const parts = haul.boxes.map((b) => `${b.count}×${b.size}`).join(' + ')
   return `${parts} = ${haul.boxCount} box${haul.boxCount === 1 ? '' : 'es'}`
+}
+
+/**
+ * `44 of 46 SCU`; with a budget cap `32 of 46 SCU · budget 250,000 aUEC (full load 40 SCU,
+ * 296,000 aUEC)`.
+ */
+export function quantityText(haul: Haul, freeScu: number, budget?: number | null): string {
+  const base = `${formatInt(haul.qtyMax)} of ${formatInt(freeScu)} SCU`
+  if (!haul.budgetCap || !budget) return base
+  const { fullQty } = haul.budgetCap
+  return `${base} · budget ${formatInt(budget)} aUEC (full load ${formatInt(fullQty)} SCU, ${formatInt(fullQty * haul.unitBuy)} aUEC)`
 }
 
 /** `max 24 SCU boxes — elevator at #2 (outpost)` / `… at #1 (small hangar), #3 (outpost)` */
@@ -124,6 +137,7 @@ export function OptionLine({
   stops,
   freeScu,
   minBox,
+  budget = null,
   now,
   bought = false,
   onToggle,
@@ -231,12 +245,14 @@ export function OptionLine({
             <Field label="Margin / SCU" value={formatInt(haul.margin)} />
             <Field
               label="Quantity"
-              value={`${formatInt(haul.qtyMax)} of ${formatInt(freeScu)} SCU`}
+              value={quantityText(haul, freeScu, budget)}
+              wide={haul.budgetCap !== null}
             />
           </div>
           {haul.unusedScu > 0 && (
             <p className="muted num">
-              {formatInt(haul.unusedScu)} SCU unused · min box {minBox}
+              {formatInt(haul.unusedScu)} SCU unused ·{' '}
+              {haul.budgetCap ? 'budget' : `min box ${minBox}`}
             </p>
           )}
           <p className="num muted">

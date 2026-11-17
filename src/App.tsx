@@ -5,6 +5,7 @@ import { TabBar, panelId, tabId } from './components/TabBar'
 import { UpdateBanner } from './pwa/UpdateBanner'
 import { useAppStore } from './state/useAppStore'
 import { useDataStore } from './state/useDataStore'
+import { EnRouteView } from './views/EnRouteView'
 import { RouteView } from './views/RouteView'
 import { ShipView } from './views/ShipView'
 import { TradesView } from './views/TradesView'
@@ -45,6 +46,7 @@ export default function App() {
           <UpdateBanner />
           {tab === 'ship' && <ShipView />}
           {tab === 'route' && <RouteView />}
+          {tab === 'enroute' && <EnRouteView />}
           {tab === 'trades' && <TradesView />}
         </div>
       </main>

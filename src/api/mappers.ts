@@ -92,10 +92,29 @@ export function mapCommodities(raw: unknown): Commodity[] {
   })
 }
 
-export function mapTerminals(raw: unknown): Terminal[] {
+/** Ids of the outposts that have an armistice zone (E6 `outposts`, SPEC §4.2). */
+export function mapArmisticeOutposts(raw: unknown): Set<number> {
+  const ids = mapAll('outposts', raw, (r) => {
+    const id = validId(r.id)
+    return id === null ? null : { id, armistice: toBool(r.is_armistice) }
+  })
+  return new Set(ids.filter((o) => o.armistice).map((o) => o.id))
+}
+
+/**
+ * Terminals of E2. `armisticeOutposts` comes from E6: with it the mapper decides `safeLoading`
+ * (station or city, or an outpost with an armistice zone; an outpost missing from E6 is unsafe).
+ */
+export function mapTerminals(
+  raw: unknown,
+  armisticeOutposts: ReadonlySet<number> = new Set(),
+): Terminal[] {
   return mapAll('terminals', raw, (r) => {
     const id = validId(r.id)
     if (id === null) return null
+    const idSpaceStation = toNum(r.id_space_station)
+    const idCity = toNum(r.id_city)
+    const idOutpost = toNum(r.id_outpost)
     return {
       id,
       name: toStr(r.name),
@@ -114,8 +133,10 @@ export function mapTerminals(raw: unknown): Terminal[] {
       isAvailableLive: toBool(r.is_available_live),
       isVisible: toBool(r.is_visible),
       hasLoadingDock: toBool(r.has_loading_dock),
-      idSpaceStation: toNum(r.id_space_station),
-      idCity: toNum(r.id_city),
+      idSpaceStation,
+      idCity,
+      idOutpost,
+      safeLoading: idSpaceStation > 0 || idCity > 0 || armisticeOutposts.has(idOutpost),
       hasFreightElevator: toBool(r.has_freight_elevator),
       isAutoLoad: toBool(r.is_auto_load),
     }

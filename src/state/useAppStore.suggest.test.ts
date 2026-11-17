@@ -54,7 +54,7 @@ describe('suggest options', () => {
   it('start off with the documented defaults', () => {
     expect(s().suggest).toEqual(DEFAULT_SUGGEST_OPTIONS)
     expect(s().suggest).toMatchObject({
-      enabled: false,
+      safeLoadingOnly: false,
       perGap: 1,
       total: 4,
       perGroup: 1,
@@ -63,16 +63,16 @@ describe('suggest options', () => {
   })
 
   it('merge partial updates and clamp them into their ranges', () => {
-    s().setSuggestOptions({ enabled: true, perGap: 2 })
-    expect(s().suggest).toMatchObject({ enabled: true, perGap: 2, total: 4 })
+    s().setSuggestOptions({ safeLoadingOnly: true, perGap: 2 })
+    expect(s().suggest).toMatchObject({ safeLoadingOnly: true, perGap: 2, total: 4 })
     s().setSuggestOptions({ total: 99, perGroup: 0, detourPct: 400 })
     expect(s().suggest).toMatchObject({ total: 8, perGroup: 1, detourPct: 300 })
   })
 
   it('are persisted with the other inputs', () => {
-    s().setSuggestOptions({ enabled: true, detourPct: 200 })
+    s().setSuggestOptions({ safeLoadingOnly: true, detourPct: 200 })
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}')
-    expect(saved.state.suggest).toMatchObject({ enabled: true, detourPct: 200 })
+    expect(saved.state.suggest).toMatchObject({ safeLoadingOnly: true, detourPct: 200 })
   })
 })
 

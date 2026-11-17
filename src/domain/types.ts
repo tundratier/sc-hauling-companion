@@ -43,6 +43,13 @@ export interface Terminal {
   idSpaceStation: number
   /** > 0 → the terminal is in a city. */
   idCity: number
+  /** > 0 → the terminal is at that outpost; joins the outposts endpoint (SPEC §6.8). */
+  idOutpost: number
+  /**
+   * Safe for loading (SPEC §6.8): at a station (hangar), in a city, or at an outpost with an
+   * armistice zone. Computed by the mapper from E2 joined with E6.
+   */
+  safeLoading: boolean
   hasFreightElevator: boolean
   isAutoLoad: boolean
 }

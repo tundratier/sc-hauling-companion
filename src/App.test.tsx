@@ -10,13 +10,13 @@ beforeEach(() => {
 })
 
 describe('App shell', () => {
-  it('renders the app name and the three views as bottom tabs', () => {
+  it('renders the app name and the four steps as bottom tabs', () => {
     render(<App />)
     expect(
       screen.getByRole('heading', { level: 1, name: /hauling companion/i }),
     ).toBeInTheDocument()
     const tabs = screen.getAllByRole('tab')
-    expect(tabs.map((t) => t.textContent)).toEqual(['Ship', 'Route', 'Trades'])
+    expect(tabs.map((t) => t.textContent)).toEqual(['Ship', 'Route', 'En route', 'Trades'])
     expect(screen.getByRole('tab', { name: 'Ship' })).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByRole('heading', { name: 'Ship' })).toBeInTheDocument()
   })

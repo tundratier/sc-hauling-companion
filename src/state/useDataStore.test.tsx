@@ -36,12 +36,13 @@ afterEach(() => {
 })
 
 describe('data store orchestration', () => {
-  it('startup loads static data only (4 requests); prices wait for TRADES', async () => {
+  it('startup loads static data only (5 requests); prices wait for TRADES', async () => {
     const mock = installMockFetch()
     await useDataStore.getState().initStatic()
     expect(requestedPaths(mock).sort()).toEqual([
       'commodities',
       'game_versions',
+      'outposts',
       'terminals',
       'vehicles',
     ])
@@ -99,7 +100,7 @@ describe('data store orchestration', () => {
     expect(state.refreshing).toBe(false)
   })
 
-  it('reloadAll refetches static data (4) and prices (1)', async () => {
+  it('reloadAll refetches static data (5) and prices (1)', async () => {
     installMockFetch()
     await useDataStore.getState().initStatic()
     await useDataStore.getState().ensurePrices()
@@ -107,7 +108,7 @@ describe('data store orchestration', () => {
     vi.setSystemTime(Date.now() + 5 * 60_000)
     const mock = installMockFetch()
     await useDataStore.getState().reloadAll()
-    expect(mock).toHaveBeenCalledTimes(5)
+    expect(mock).toHaveBeenCalledTimes(6)
   })
 
   it('reloadAll with no cache and a failing network reports a blocking error', async () => {

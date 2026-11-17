@@ -10,7 +10,7 @@ interface TabBarProps {
 export const tabId = (tab: Tab) => `tab-${tab}`
 export const panelId = (tab: Tab) => `panel-${tab}`
 
-/** Bottom tab bar: SHIP · ROUTE · TRADES (WAI-ARIA tabs with arrow-key support). */
+/** Bottom tab bar: SHIP · ROUTE · EN ROUTE · TRADES (WAI-ARIA tabs with arrow-key support). */
 export function TabBar({ tab, onChange }: TabBarProps) {
   const refs = useRef<Record<string, HTMLButtonElement | null>>({})
 

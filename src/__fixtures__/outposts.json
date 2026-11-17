@@ -1,0 +1,11 @@
+{
+  "status": "ok",
+  "http_code": 200,
+  "message": "",
+  "data": [
+    { "id": 301, "name": "Samson & Son's Salvage Center", "is_armistice": 0, "is_monitored": 1 },
+    { "id": 302, "name": "Closed Outpost", "is_armistice": "1", "is_monitored": 0 },
+    { "id": 303, "name": "Unused Outpost", "is_armistice": 1, "is_monitored": 0 },
+    { "id": 0, "name": "Malformed" }
+  ]
+}

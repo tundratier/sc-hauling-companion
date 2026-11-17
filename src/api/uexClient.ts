@@ -89,4 +89,5 @@ export const fetchCommodities = (signal?: AbortSignal) => uexGet('commodities', 
 export const fetchTerminals = (signal?: AbortSignal) => uexGet('terminals?type=commodity', signal)
 export const fetchVehicles = (signal?: AbortSignal) => uexGet('vehicles', signal)
 export const fetchPricesAll = (signal?: AbortSignal) => uexGet('commodities_prices_all', signal)
+export const fetchOutposts = (signal?: AbortSignal) => uexGet('outposts', signal)
 export const fetchGameVersions = (signal?: AbortSignal) => uexGet('game_versions', signal)

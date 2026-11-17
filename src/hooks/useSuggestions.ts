@@ -10,8 +10,7 @@ import { useCalcSettings } from './useTrades'
 export const SUGGEST_DEBOUNCE_MS = 300
 
 export type SuggestionState =
-  | { status: 'off' }
-  /** Enabled, but something is missing: why. */
+  /** Something is missing: why. */
   | { status: 'blocked'; reason: string }
   | { status: 'searching'; map: MapInfo | null }
   | { status: 'none'; bestFound: boolean; map: MapInfo }
@@ -30,10 +29,12 @@ type MapState =
   | { status: 'error'; message: string }
 
 /**
- * Route suggestions for the ROUTE view (§6.7, §7.4). Loads the terminal map lazily when the
- * option is on, makes sure prices are loaded, and recomputes — debounced, in a Web Worker, only
- * the latest request counts — whenever the route, the options, the calc inputs, the dismissals
- * or the data change. Suggestions are proposals only; nothing here edits the route.
+ * Route suggestions for the EN ROUTE view (§6.7, §7.4a). Use it only in that view: the search
+ * runs while the view is mounted and a pending one is dropped when it unmounts. Loads the
+ * terminal map lazily, makes sure prices are loaded, and recomputes — debounced, in a Web
+ * Worker, only the latest request counts — whenever the route, the options, the calc inputs,
+ * the dismissals or the data change. Suggestions are proposals only; nothing here edits the
+ * route.
  */
 export function useSuggestions(): SuggestionState {
   const stops = useAppStore((s) => s.stops)
@@ -41,7 +42,7 @@ export function useSuggestions(): SuggestionState {
   const { fixed, accepted } = useMemo(() => splitRoute(stops, origins), [stops, origins])
   const options = useAppStore((s) => s.suggest)
   const dismissed = useSuggestUi((s) => s.dismissed)
-  const resetDismissed = useSuggestUi((s) => s.reset)
+  const forRoute = useSuggestUi((s) => s.forRoute)
   const { calc } = useCalcSettings()
   const staticData = useDataStore((s) => s.staticData)
   const prices = useDataStore((s) => s.prices)
@@ -52,12 +53,16 @@ export function useSuggestions(): SuggestionState {
   const [mapState, setMapState] = useState<MapState>({ status: 'idle' })
   const [outcome, setOutcome] = useState<{ key: object; value: SuggestionState } | null>(null)
 
-  const wanted = options.enabled && fixed.length >= 2
+  const wanted = fixed.length >= 2
 
-  // Dismissals last until the route is cleared.
+  // Dismissals last for this route: until it is cleared or its fixed stops change.
+  const fixedKey = fixed.join(',')
   useEffect(() => {
-    if (stops.length === 0) resetDismissed()
-  }, [stops.length, resetDismissed])
+    forRoute(fixedKey)
+  }, [fixedKey, forRoute])
+
+  // Leaving EN ROUTE drops a search still in flight.
+  useEffect(() => () => getSuggestClient().dispose(), [])
 
   // Prices are needed for the profits; they are loaded the same lazy way as on TRADES.
   useEffect(() => {
@@ -141,7 +146,6 @@ export function useSuggestions(): SuggestionState {
     // oxlint-disable-next-line react/exhaustive-deps
   }, [signature])
 
-  if (!options.enabled) return { status: 'off' }
   if (fixed.length < 2) return { status: 'blocked', reason: 'Add at least two stops first.' }
   if (!staticData) return { status: 'blocked', reason: 'Ships and terminals are not loaded yet.' }
   if (!prices) {
