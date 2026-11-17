@@ -6,6 +6,12 @@ This document is the single source of truth for implementing v1.0. It is written
 
 ### Revision history
 
+**Revision 18 (2026-11-17)** — real-usage feedback:
+- **Budget:** a budget in SHIP. A trade that costs more is listed with the load the budget buys and a `BUDGET` badge. It is hidden only when not even one box is affordable (§6.1, §6.3, §7.3, §7.5).
+- **Four steps:** SHIP → ROUTE → **EN ROUTE** → TRADES. The trade filters move from SHIP to EN ROUTE. Suggestions and their settings move from ROUTE to EN ROUTE, which shows filters on top and the route with suggestions at the bottom. The on/off toggle goes away; the search runs while EN ROUTE is open (§6.7, §7.2–§7.4a).
+- **Safe loading:** one rule, "armistice zone or station hangar", from the new E6 `outposts` call. An EN ROUTE option suggests only safe stops, and a `NO SAFE ZONE` badge marks unsafe route stops. ✕ on a suggestion only lasts for the route (§4.1, §4.2, §5.2, §6.8).
+- Acceptance criteria 2, 17 and 22–24, tests (§8.1).
+
 **Revision 17 (2026-11-03)** — the full screen button is not rendered in the installed app (`display-mode: standalone`) (§7.2, criterion 15).
 
 **Revision 16 (2026-11-02)** — **installable PWA**:
@@ -233,6 +239,7 @@ Verified on 2026-10-27 by live requests:
 | E3 | `GET /vehicles` | Ships, cargo SCU, accepted box sizes | 12 h | 583 KB / 68 KB | 24 h |
 | E4 | `GET /commodities_prices_all` | All current buy/sell prices at all commodity terminals | 30 min (updated hourly) | 1.07 MB / 78 KB | 30 min |
 | E5 | `GET /game_versions` | `{ live, ptu }` — shown in footer and used to invalidate static caches | 24 h | tiny | with static data |
+| E6 | `GET /outposts` | Armistice flag per outpost, for safe loading (§6.8) | 12 h | 93 KB / 5 KB | with static data |
 
 Not used (and why):
 - `commodities_prices` (per terminal/commodity) — E4 returns everything in one call; per-terminal calls would multiply requests.
@@ -273,6 +280,7 @@ Sample (trimmed): `{"id":1,"name":"Agricium","code":"AGRI","kind":"Metal","is_ra
 | `is_available_live`, `is_visible` | 0/1 | default filter: both 1 |
 | `has_loading_dock` | 0/1 | **external cargo elevator** (loading dock): a station with it takes 32 SCU boxes even from ships in a small hangar (§6.3). 13 live stations in 4.10.2; no city or outpost has it |
 | `id_space_station`, `id_city` | int | > 0 → the terminal is at a station / in a city; neither → planetary outpost (§6.3 elevator cap) |
+| `id_outpost` | int | > 0 → the terminal is at that outpost; joins E6 for the armistice flag (§6.8). Every live commodity terminal has exactly one of `id_space_station`, `id_city`, `id_outpost` (checked 2026-11-17) |
 | `has_freight_elevator`, `is_auto_load`, `has_docking_port` | 0/1 | MAY show as icons |
 
 **E3 `vehicles`** (283 records, 140 with `scu > 0`). Fields used:
@@ -316,6 +324,8 @@ Sample sell row: `{"commodity_name":"Agricium","terminal_name":"TDD Area 18","pr
 
 **E5 `game_versions`**: `{"live":"4.10.2","ptu":"4.10.3"}`
 
+**E6 `outposts`** (119 records, 93 kB raw / 5 kB gzip). Fields used: `id` (key, joined from the terminal's `id_outpost`) and `is_armistice` (0/1: the outpost has an armistice zone). On 2026-11-17 every live Pyro outpost had `is_armistice = 0`. In Stanton, 7 outposts with commodity terminals had 0: the salvage yards (Brio's Breaker Yard, Devlin Scrap & Salvage, Reclamation & Disposal Orinth, Samson & Son's Salvage Center), Rappel, and the Dusters outposts Dunboro and Picker's Field. `is_monitored`, `faction_name` and `jurisdiction_name` exist but are not used (§6.8).
+
 ### 4.3 Inventory status scale (embed as constant)
 
 From `GET /commodities_status` (verified). Codes 1–7, same ranges for both sides; meaning differs. Used **only** to show labels and warnings — never to filter (see note in §4.2):
@@ -354,17 +364,17 @@ Cache entry: `{ key, schemaVersion, fetchedAt (ms), gameVersion, data }`.
 
 | Dataset | Keys | TTL | Refresh trigger |
 |---|---|---|---|
-| Static: commodities, terminals, vehicles, game version | `static:v1` (single entry, fetched together) | 24 h | expired, `schemaVersion` changed, or user taps "Reload all data" |
+| Static: commodities, terminals, vehicles, game version, outpost armistice flags | `static:v3` (single entry, fetched together; the key moves from `static:v2` because the terminals gain `safeLoading`, §6.8) | 24 h | expired, `schemaVersion` changed, or user taps "Reload all data" |
 | Prices | `prices:v1` | 30 min | expired **and** the user opens/recomputes results, or user taps "Refresh prices" |
 
 Behavior:
 
 - **Stale-while-revalidate**: if a cached entry exists, render with it immediately; if expired, refetch in the background and recompute when it arrives. Show "prices updated HH:MM · age" in the results header.
-- Static refresh fetches E1, E2, E3, E5 in parallel (4 requests). Cached prices are tagged with the game version they were fetched under; if E5's `live` differs, the cached prices count as expired and go through stale-while-revalidate (old prices shown, refetched in the background, results recomputed). This does not bypass the manual-refresh cooldown.
+- Static refresh fetches E1, E2, E3, E5, E6 in parallel (5 requests). Cached prices are tagged with the game version they were fetched under; if E5's `live` differs, the cached prices count as expired and go through stale-while-revalidate (old prices shown, refetched in the background, results recomputed). This does not bypass the manual-refresh cooldown.
 - No polling, no refetch while `document.visibilityState === "hidden"`.
 - Manual "Refresh prices" is disabled for 60 s after a fetch (server data won't change faster than its 30 min cache anyway).
 - On network/API error: keep using cached data, show a non-blocking banner ("Offline — showing data from …"). If there is no cache at all, show a blocking error with a Retry button.
-- Expected call budget: cold start 5 requests; warm start within TTL 0; typical session ≤ 1 per 30 min.
+- Expected call budget: cold start 6 requests; warm start within TTL 0; typical session ≤ 1 per 30 min.
 - If IndexedDB is unavailable (private mode), fall back to in-memory cache; app must still work.
 
 ### 5.3 Derived indexes (built once per dataset load, memoized)
@@ -424,6 +434,7 @@ interface CalcInput {
   shipBoxSizes: number[] | null; // from vehicle, null = unknown
   boxRange: { min: number; max: number }; // user-chosen box size range, values from STD (1..32), min ≤ max
   smallHangar: boolean;       // the ship lands in a small (S) hangar → hangar elevators take ≤ 24 SCU (§6.3)
+  budget: number | null;      // aUEC the player can spend on one load; null = no limit (§6.3)
   options: {
     includeIllegal: boolean;          // default true (illegal hauls are badged)
     includeVolatileQt: boolean;       // default false
@@ -471,6 +482,13 @@ For every pair of stop indices `i < j` and every commodity `c` with a buy offer 
     - `elevator` — `B` would be non-empty without `elevatorSizes` ("N trades need boxes bigger than the cargo elevators take"). Checked before the other two reasons.
   - When the elevator cap removed sizes that would otherwise be allowed, the haul carries `elevatorCap: { size: 24, stops: [i, j] }` (the stop indices whose cap applied), shown in the expanded line as "max 24 SCU boxes — elevator at #2 (outpost)" / "(small hangar)".
 - `qtyMax = maxFillable(cap, B)` — the largest integer ≤ `cap` that is a non-negative integer combination of sizes in `B` (unbounded-knapsack reachability DP, O(cap·|B|); cap ≤ ~12,000). If 0 (free SCU smaller than the smallest allowed box), drop it under `boxTooLarge`. `unusedScu = cap − qtyMax` is shown when > 0 (e.g. "2 SCU unused · min box 4").
+- **Budget cap** (revision 18), only when `budget` is set:
+  - `fullQty = maxFillable(cap, B)` as above, `affordable = floor(budget / unitBuy)`, and `qtyMax = maxFillable(min(cap, affordable), B)`.
+  - If `qtyMax < fullQty`, the haul carries `budgetCap: { fullQty }`. It is still listed: its investment, revenue, profit and ROI use the capped `qtyMax`, and so does its rank. A partial load that earns more than other full loads therefore ranks above them, which is the point.
+  - If `fullQty > 0` but `qtyMax = 0` (the budget doesn't buy one of the smallest allowed boxes), drop the haul and count it under `budget` ("N trades cost more than your budget for a single box").
+  - `unusedScu` then has the reason `budget` instead of the box size: "14 SCU unused · budget".
+  - Each haul is checked on its own. Two lines bought at the same stop may together cost more than the budget; the app doesn't add them up.
+  - The order of checks is: option filters → elevator / box drops → `boxTooLarge` (free space below the smallest box) → `budget`. Every haul generated anywhere (TRADES, the stopover comparison §6.6, the profitable-stops search §6.7) goes through the same generation, so it gets the same cap.
 - Also compute a **box breakdown** for display: greedy largest-first decomposition of the quantity (valid because DP already proved representability; if greedy fails, use the DP backtrack). Include the total box count (e.g. `2×16 + 1×8 + 1×4 = 4 boxes`).
 
 Store per candidate: commodity, i, j, unitBuy, unitSell, margin, qtyMax, B, statuses and reported SCU values (display only), price ages (both rows), flags (`illegal`, `volatileTime`, `temporary`, `noStock`, `lowStock`, `noDemand`, `lowDemand`, `boxSizesUnknown`, `shipBoxSizesUnknown`, `stale` if either row older than 7 days).
@@ -514,7 +532,7 @@ Example: A→C Laranite 10,000 vs. A→B Agricium 4,000 + B→C Waste 5,000 → 
 
 ### 6.7 Add profitable stops (route suggestions)
 
-The app can suggest **dynamic stops**: extra terminals inserted between the user's **fixed stops** (the route as entered) so that the route earns more. Pure functions in `src/route/suggest/` (no React); suggestions are only proposals, the route changes only when the user accepts them (§7.4).
+The app can suggest **dynamic stops**: extra terminals inserted between the user's **fixed stops** (the route as entered) so that the route earns more. Pure functions in `src/route/suggest/` (no React); suggestions are only proposals, the route changes only when the user accepts them (§7.4a).
 
 **Stop origin.** Every route stop carries `origin: 'fixed' | 'dynamic'` (persisted with the route; stops from older persisted state migrate as `fixed`). Stops added through the "Add stop" field are `fixed`; stops accepted with Add / Add all are `dynamic`. The origin travels with the stop on reorder, reverse and remove; removing a dynamic stop simply frees its budget. There is no conversion between the two.
 - The **gaps** are defined by the fixed stops only. Accepted dynamic stops sit inside their gap and are **already placed**: the search never moves, removes or replaces them, but they **count** towards every limit (per gap, total, per planetary group, fixed + dynamic ≤ 10) and they are part of the gap's stop sequence for the detour and forward rules. New suggestions only fill the remaining budget.
@@ -528,7 +546,7 @@ The app can suggest **dynamic stops**: extra terminals inserted between the user
 
 | Option | Default | Range |
 |---|---:|---|
-| `enabled` | off | — |
+| Safe loading only (§6.8) | off | — |
 | Max dynamic stops between two fixed stops | 1 | 0–3 |
 | Max dynamic stops in total | 4 | 1–8, and fixed + dynamic ≤ 10 (the route limit) |
 | Max dynamic stops per planetary group | 1 | 1–3 |
@@ -539,8 +557,9 @@ The app can suggest **dynamic stops**: extra terminals inserted between the user
 - it has a node in the terminal map (§5.4);
 - it is **not in a city** (`city_name` empty); outposts, stations and moon/planet surface terminals without a city are fine;
 - its star system is one the fixed stops already use (**no new star systems**);
-- it is not already a stop of the route (fixed or dynamic) and not dismissed by the user (§7.4);
-- it has at least one buy or sell offer of an eligible commodity (§6.2).
+- it is not already a stop of the route (fixed or dynamic) and not dismissed by the user (§7.4a);
+- it has at least one buy or sell offer of an eligible commodity (§6.2);
+- with the option **safe loading only** on (§6.8, default off): its `safeLoading` is `true`.
 
 **Constraints**, with `d(U, V)` = map travel distance between the terminals' nodes (§5.4), for every gap between consecutive fixed stops A, B with dynamic stops X1…Xk — accepted ones and new suggestions together, in route order (k ≤ per-gap max):
 - **Detour:** `d(A, X1) + d(X1, X2) + … + d(Xk, B) ≤ d(A, B) × p`. (Equivalently: reject when `d(A, B) × p < d(A, X1) + … + d(Xk, B)`.) If `d(A, B)` is unknown (a fixed stop without a map node), no stops are inserted in that gap.
@@ -557,6 +576,24 @@ The app can suggest **dynamic stops**: extra terminals inserted between the user
 **Search.** The implementer chooses the algorithm, but the result MUST be the exact optimum for the default options on realistic data (e.g. 5 fixed Stanton stops, all Stanton commodity terminals as candidates). Hints: precompute the best haul profit for every ordered candidate/fixed terminal pair once per input change; prune candidates per gap by the single-stop detour and forward rules before combining; `P` of an ordered stop list is a longest-path DP (`f(k) = max(f(k−1), max_{i<k} f(i) + w(i, k))`). For non-default options the search MAY stop at a time budget of 2 s and then labels the result "best found". Determinism: same inputs → same suggestion.
 
 **Performance.** Measure on realistic data. If one computation takes more than ~50 ms on the main thread, run it in a **Web Worker** (Vite `new Worker(new URL(…), { type: 'module' })`), keep the latest request only (cancel/ignore stale results), and show a small "searching…" state; the rest of the UI stays responsive. Recompute when the route, the options or the calc inputs change, debounced by ~300 ms.
+
+**When it runs** (revision 18): only while the EN ROUTE view is shown (§7.4a). There is no on/off option any more; the persisted `enabled` flag is dropped by the store migration. Leaving EN ROUTE ignores a pending result, and coming back recomputes. Accepted dynamic stops stay in the route either way.
+
+### 6.8 Safe loading (revision 18)
+
+Use case: the player wants to load and unload without worrying about other players. An armistice zone protects the pad, and inside a station hangar the player is safe even without one. So one rule, and no AND/OR builder:
+
+- A terminal is **safe for loading** (`safeLoading: true`) if
+  - it is at a **space station** (`id_space_station > 0`), because cargo is moved inside the hangar; or
+  - it is in a **city** (`id_city > 0`), because cities have armistice zones; or
+  - it is at an **outpost** (`id_outpost > 0`) whose E6 row has `is_armistice = 1`.
+- Everything else is **not safe**: outposts without an armistice zone, and an `id_outpost` missing from E6.
+- Computed once in the mapper (E2 joined with E6) and stored on `Terminal` as `safeLoading: boolean`. The result in 4.10.2: all stations and cities are safe, every Pyro outpost is not, and in Stanton the 7 outposts named in §4.2 E6 are not.
+- **Where it applies:**
+  - The option **safe loading only** (EN ROUTE, §7.4a) removes unsafe terminals from the dynamic-stop candidates (§6.7).
+  - It never filters **fixed** stops or trades: the player chose those stops.
+  - Every route stop that isn't safe shows a `NO SAFE ZONE` badge (`--warn` outline, badge style of §7.5). It appears in the ROUTE and EN ROUTE stop rows and in the TRADES stop header, whether the option is on or off, so the player knows before flying there.
+- Known limitation: the rule treats every station as safe. Starlight Service Station (Pyro) only lists an L pad in UEX and may have no hangar. Fix it in the data rule if players report it.
 
 ---
 
@@ -594,7 +631,12 @@ These values are a starting point. Tune them in the browser to match the warm-wh
 - No horizontal page scroll at 360 px. Tables become stacked cards below 600 px.
 - Touch targets ≥ 44×44 px for interactive elements; primary actions reachable by thumb (bottom area). Purely informational elements (badges) are not touch targets and stay small (§7.5).
 - Sticky bottom elements (tab bar, CALCULATE TRADES button) are laid out inside the same centered content column as the page (max-width 820 px), so they stay centered at every viewport width. Never position them relative to the viewport's left edge.
-- Three views switched by a **bottom tab bar**: `SHIP` · `ROUTE` · `TRADES`. The selected tab and all inputs persist across reloads (Zustand `persist`, key `shc:v1`).
+- **Four views**, one per step of the use case, switched by a **bottom tab bar**: `SHIP` · `ROUTE` · `EN ROUTE` · `TRADES` (revision 18). The selected tab and all inputs persist across reloads (Zustand `persist`, key `shc:v1`, with a store version bump and a migration that keeps the stored tab).
+  1. **SHIP** — the static settings: ship, free SCU, box sizes, small hangar, budget (§7.3).
+  2. **ROUTE** — the stops the hauling mission requires (§7.4).
+  3. **EN ROUTE** — filters on top, then the suggested stops along the route (§7.4a).
+  4. **TRADES** — unchanged (§7.5, §7.6).
+  - At 360 px the four tabs share the width equally (icon + label; the label `EN ROUTE` must fit without wrapping or truncation).
 - Header strip: app name "HAULING COMPANION", data status pill (e.g. `PRICES 12m · LIVE 4.10.2`), refresh icon button, **full screen button**.
 - **Full screen button** (rightmost in the header, after refresh):
   - **Look:** an icon button with the same style and ≥ 44 px hit area as the refresh button. It uses inline SVG icons: "expand" (four outward corners) when windowed, "collapse" (four inward corners) when in full screen.
@@ -620,7 +662,8 @@ These values are a starting point. Tune them in the browser to match the warm-wh
   - If the ship's sizes are unknown, show "Box sizes for this ship unknown — set the largest box that fits" and preset `{min: 4, max: 32}`.
   - Both handles must be usable by touch and keyboard (each handle is a `role="slider"` with arrow keys; ≥ 44 px hit area). Two overlaid native `<input type="range">` elements are acceptable.
 - **Small hangar** toggle below the box slider: `Lands in a small hangar (S) — hangar elevators take max 24 SCU boxes`. Preset from the ship's `pad_type` (`S` → on, anything else or unknown → off) whenever the ship changes; the user can override it, and the choice persists. With no ship selected it is off. A short hint names the rule: "Outposts always take max 24 SCU; cities and stations without a loading dock too when you land in a small hangar."
-- **Filters**: toggles for Include illegal (on), Include quantum-volatile (off) and **Hide low stock & demand** (off; hint: "Hides trades where the buy terminal reports low or no stock, or the sell terminal low or no demand — for stress-free hauling"). Persisted under the same setting as before (`hideLowStock`), so users who had it on keep it on.
+- **Budget (aUEC)** (revision 18), below the small hangar toggle: an optional numeric input with grouping (`250,000`), empty = no limit, placeholder "no limit", a clear (`✕`) button when set, persisted. Hint: "Max aUEC for one load. More expensive trades are shown with the load you can afford." It feeds `CalcInput.budget` (§6.3).
+- The trade **filters** are no longer here; they moved to EN ROUTE (§7.4a).
 - Data controls: "Refresh prices", "Reload all data" (with timestamps).
 - **Install app** (§5.5), next to the data controls:
   - An `INSTALL APP` button (secondary style, ≥ 44 px), rendered only after the browser fired `beforeinstallprompt`. The app calls `preventDefault()` on that event and keeps it.
@@ -655,26 +698,52 @@ These values are a starting point. Tune them in the browser to match the warm-wh
   - Results show as an overlay list above the on-screen keyboard; keyboard support (↑ ↓ Enter Esc) on desktop. Selecting adds the stop and clears the input (focus stays to add the next).
   - Start filtering at 1 character; no network calls (all local).
 - "Clear route" with confirmation; "Reverse route" button.
-- **Section order** (top to bottom): trip-reset banner (if any) → stop list (with inline suggested rows) → stop count → **Add stop** field and "show unavailable terminals" → Reverse / Clear route → **Add profitable stops**. Entering the stops comes first; adding dynamic stops is the step after it.
+- **Section order** (top to bottom): trip-reset banner (if any) → stop list → stop count → **Add stop** field and "show unavailable terminals" → Reverse / Clear route. ROUTE holds only the stops of the mission. Suggestions and their settings are in EN ROUTE (revision 18).
 - **Accepted dynamic stops** in the stop list are normal stop rows (number, drag handle, reorder, remove) with a small `DYNAMIC` badge (amber outline, badge style of §7.5), so the user sees which stops use the dynamic budget.
-- **Add profitable stops** (§6.7), the last section, collapsed by default:
-  - Toggle `ADD PROFITABLE STOPS` plus the four settings (steppers per gap, total, per planetary group; detour as stepper or slider in 10 % steps), with their defaults from §6.7. Disabled with a one-line reason when the route has fewer than 2 stops, prices are not loaded, or the map can't be loaded; "map from 4.10.2" when the map is older than LIVE.
-  - When on, suggestions appear **inline in the stop list**, in the gap where they belong, as visually distinct rows (dashed `--amber-dim` border, label `SUGGESTED`), each with the terminal display (§7.4), its role (`buy Quartz → #5`, `sell Waste`), an **Add** button and a **✕** (dismiss) button. Suggested rows have no number, drag handle or reorder buttons.
-  - Inside this section, below the settings: the budget (`dynamic stops 1 / 4 used`), the summary `+2 stops · route profit 120,000 → 165,000 (+45,000) · distance 40.1 → 52.0 Gm (+30 %)` and the `ADD ALL` button. Nothing of this sits above the stop list any more.
-  - **Add** inserts the stop at its position as a `dynamic` stop; **Add all** inserts all of them as `dynamic`. Either changes the route, so suggestions recompute with the accepted stops counted (§6.7), and trip progress resets as for every route edit (§7.6).
-  - **✕** excludes that terminal from suggestions until the route is cleared; dismissals are UI state and are not persisted.
-  - States: "searching…" while a worker computation runs; "No profitable stops within a 150 % detour" when nothing qualifies; "best found" when the time budget was hit (§6.7).
-- A sticky bottom button "CALCULATE TRADES →" switches to TRADES (calculation is also live/automatic whenever inputs change). It is horizontally centered in the content column at every width (§7.2): full column width below 600 px, otherwise max-width 480 px with `margin-inline: auto`.
+- Stops that fail the safe-loading rule (§6.8) carry a `NO SAFE ZONE` badge next to `DYNAMIC` (if any), in the secondary line.
+- A sticky bottom button `EN ROUTE →` switches to EN ROUTE. It is horizontally centered in the content column at every width (§7.2): full column width below 600 px, otherwise max-width 480 px with `margin-inline: auto`.
+
+### 7.4a EN ROUTE view (revision 18)
+
+The step between "these are my mission's stops" and "what do I trade". Filters come first, because they decide both the trades and the suggestions. Top to bottom:
+
+1. **Trade filters** (moved from SHIP, same settings and persisted keys, so nothing resets):
+   - Include illegal (on).
+   - Include quantum-volatile (off).
+   - **Hide low stock & demand** (off; hint: "Hides trades where the buy terminal reports low or no stock, or the sell terminal low or no demand — for stress-free hauling").
+   - Max price age.
+
+   These filters apply to every trade (TRADES, stopover comparison, suggestions).
+2. **Stop filter:** **Safe loading only** (off; hint: "Suggest only armistice zones and station hangars — leaves out Pyro outposts and Stanton salvage yards"). It applies to suggestions only (§6.8).
+3. **Suggestion settings:** the four steppers of §6.7 (per gap, total, per planetary group, detour in 10 % steps) on compact rows, no collapsible section and no on/off toggle. "map from 4.10.2" when the map is older than LIVE.
+4. **Route with suggestions** — the full route as compact rows:
+   - **Stop rows:** number, terminal display (§7.4), and the `DYNAMIC` and `NO SAFE ZONE` badges.
+   - **Suggested rows:** inline in the gap where they belong, visually distinct (dashed `--amber-dim` border, label `SUGGESTED`). Each shows the terminal display, its role (`buy Quartz → #5`, `sell Waste`), an **Add** button and a **✕** (dismiss) button.
+   - **Remove:** a dynamic stop's row has a remove button here too, so a wrong pick can be undone without going back.
+   - **Reorder:** there is no drag handle or reorder here; reordering stays in ROUTE.
+5. **Summary** below the list: the budget (`dynamic stops 1 / 4 used`), `+2 stops · route profit 120,000 → 165,000 (+45,000) · distance 40.1 → 52.0 Gm (+30 %)`, and the `ADD ALL` button.
+
+Behaviour:
+- **Add** inserts the stop at its position as a `dynamic` stop. **Add all** inserts all of them. Either changes the route, so suggestions recompute with the accepted stops counted (§6.7), and trip progress resets as for every route edit (§7.6).
+- **✕** excludes that terminal from suggestions **for this route only**: until the route is cleared or its fixed stops change. Dismissals are UI state, not persisted, and there is no permanent block list.
+- **States:**
+  - "searching…" while a worker computation runs.
+  - "No profitable stops within a 150 % detour" when nothing qualifies (with "safe loading only" on: "… with safe loading").
+  - "best found" when the time budget was hit (§6.7).
+- **Fewer than 2 stops:** the filters stay usable, and sections 3–5 are replaced by a hint linking to ROUTE.
+- **Prices not loaded, or the map can't be loaded:** sections 3–5 show a one-line reason instead.
+- A sticky bottom button `CALCULATE TRADES →` switches to TRADES. Same placement rules as ROUTE's button.
 
 ### 7.5 TRADES view
 
-- Summary header: route (`ARC-L1 → Area18 TDD → …`), free SCU, ship, box range, data age.
+- Summary header: route (`ARC-L1 → Area18 TDD → …`), free SCU, ship, box range, budget (if set), data age.
+  - Below it, a one-line summary of the active trade filters that differ from the defaults (e.g. `illegal hidden · low stock & demand hidden · prices ≤ 3 d`). It links to EN ROUTE, so the user can see why trades are missing without hunting for the settings. Nothing is shown when all filters are at their defaults.
 - Sort selector for all stop lists: Profit (default), ROI, Margin/SCU, Investment — all descending.
 - Empty/insufficient states:
   - fewer than 2 stops → hint linking to ROUTE;
-  - no profitable trades → "No profitable trades along this route" + count of dropped trades by reason (`boxTooLarge`, `boxTooSmall`, `elevator`, illegal filter, volatile filter, price-age filter, `lowStock` filter, `lowDemand` filter).
+  - no profitable trades → "No profitable trades along this route" + count of dropped trades by reason (`boxTooLarge`, `boxTooSmall`, `elevator`, illegal filter, volatile filter, price-age filter, `lowStock` filter, `lowDemand` filter, `budget`). The filter reasons link to EN ROUTE.
 - **Stop sections**, one per stop in route order:
-  - Header: stop number + terminal display (§7.4).
+  - Header: stop number + terminal display (§7.4), plus `NO SAFE ZONE` when the stop fails the safe-loading rule (§6.8).
   - Body: the buy options for that stop (§6.5) as a compact list. Show the top 5; a "Show N more" button expands the rest.
   - A stop with no options says "Nothing profitable to buy here". The last stop says "Final stop — sell only".
 - **Option line** (collapsed, up to three text rows). **At the current stop, tapping the line toggles it as bought** (§7.6). It is a toggle button (`aria-pressed`), ≥ 44 px tall. Details have their **own, clearly labelled button** (see Details button). Contents:
@@ -711,13 +780,13 @@ These values are a starting point. Tune them in the browser to match the warm-wh
   
   Content:
   - Margin/SCU (buy and sell price are already on the collapsed line).
-  - Quantity (`44 of 46 SCU`, plus "2 SCU unused · min box 4" when applicable) and the box breakdown with count.
+  - Quantity (`44 of 46 SCU`, plus "2 SCU unused · min box 4" when applicable) and the box breakdown with count. For a budget-capped line: `32 of 46 SCU · budget 250,000 aUEC (full load 40 SCU, 296,000 aUEC)`.
   - Investment, revenue, profit, ROI.
   - Price ages for both rows.
   - Skip lines: "Instead of skipping" with one row per chain leg (`#1 → #2 Agricium 4,000`) or "No profitable trade sells at #2.", then the fields Via stops, Skipping (the line's profit) and Difference (signed).
   - Reported inventory with its explanation, e.g. "Reported 9 h ago: stock Out of Stock (0–14 %), 0 SCU. Inventory may have refilled since." This replaces the tappable badges.
 - **Badges** are small, non-interactive chips: height ≈ 18–20 px, font 11 px uppercase, padding 0 6 px, 1 px outline. They are **not** touch targets.
-  - Types: `ILLEGAL` (`--warn` fill), `SKIPS n` (amber outline), `STALE 9d`, `VOLATILE`.
+  - Types: `ILLEGAL` (`--warn` fill), `SKIPS n` (amber outline), `STALE 9d`, `VOLATILE`, `BUDGET` (amber outline: the load is capped by the budget, §6.3).
   - Inventory warnings (`--warn` outline, question mark because the data is reported, not live): `NO STOCK?`, `LOW STOCK?`, `NO DEMAND?`, `LOW DEMAND?`.
   - Badges sit on row 2 after the sell stop. On narrow lines, show at most 3 badges and a `+n` chip; the expanded line lists all of them.
 - Number format: `en-US` grouping (`1,234,567`) with unit `aUEC`; on narrow cards MAY use compact (`1.23M`) with full value in `title`/expand. Percentages 1 decimal.
@@ -802,7 +871,7 @@ interface BoughtLine {
 ## 8. Acceptance criteria (v1.0)
 
 1. `docker compose up dev` serves the app on :5173 with hot reload on a Windows host; `docker compose run --rm test` and `docker compose run --rm lint` (oxlint + TS 7 typecheck) pass; `docker compose up --build app` serves the production build on :8080. No host Node required. `package.json` contains TypeScript 7 and no ESLint packages.
-2. First load performs at most 5 API requests (E1–E5); reload within 30 min performs 0; after 30 min opening TRADES performs exactly 1 (E4). Verified via the browser network panel and a unit test with a mocked `fetch`.
+2. First load performs at most 6 API requests (E1–E6); reload within 30 min performs 0; after 30 min opening TRADES performs exactly 1 (E4). Verified via the browser network panel and a unit test with a mocked `fetch`.
 3. Typing `arc l1`, `ARCL1`, `wide forest` or `area18` in the stop field shows the corresponding terminals; duplicates of a `displayname` are distinguishable by the secondary line; the secondary line never repeats the primary line (`HDMS-Hahn` shows `Hurston · Magda · Stanton`).
 4. Selecting a ship sets free SCU and the box range; changing free SCU or either end of the box range immediately updates all results.
 5. Raw commodities (`is_raw = 1`) and items never appear. Illegal commodities are badged and can be hidden.
@@ -823,7 +892,7 @@ interface BoughtLine {
     - Trip progress survives a page reload and resets when the route is edited.
 15. The header's full screen button enters and leaves full screen. Its icon and label follow the real state, including leaving with Esc. It is absent where the Fullscreen API is unavailable and in the installed app (`display-mode: standalone`). Unit-tested with a mocked Fullscreen API: supported, unsupported, rejected request, and standalone.
 16. Every skip line shows, without expanding, how much more or less it earns than the best chain of trades via the skipped stops (§6.6); the expanded line lists that chain's legs and the difference. Lines without skips show no comparison.
-17. Add profitable stops (§6.7, §7.4): with the option on, ROUTE suggests dynamic stops only when they raise the route profit; every suggestion respects the per-gap, total, per-planetary-group and detour limits, the forward rule (backtracking only inside a planetary group), contains no city terminal and no star system the fixed stops don't use; a dynamic stop may serve a trade that spans a fixed stop (buy at X before B, sell at Y after B). Add / Add all / ✕ work as specified, the UI stays responsive while searching, and the map file is fetched at most once per game version. No UEX request is added. Accepted stops are marked `DYNAMIC`, keep counting towards all limits after the recompute (with defaults, accepting the suggested stops never leads to more than 4 dynamic stops in total or more than 1 per gap), and the ROUTE sections appear in the order of §7.4.
+17. Add profitable stops (§6.7, §7.4a): while EN ROUTE is open, it suggests dynamic stops only when they raise the route profit; every suggestion respects the per-gap, total, per-planetary-group and detour limits, the forward rule (backtracking only inside a planetary group), contains no city terminal and no star system the fixed stops don't use; a dynamic stop may serve a trade that spans a fixed stop (buy at X before B, sell at Y after B). Add / Add all / ✕ work as specified, the UI stays responsive while searching, and the map file is fetched at most once per game version. No UEX request is added. Accepted stops are marked `DYNAMIC`, keep counting towards all limits after the recompute (with defaults, accepting the suggested stops never leads to more than 4 dynamic stops in total or more than 1 per gap), and the EN ROUTE sections appear in the order of §7.4a.
 18. Skip lines that earn less than their stopover chain are one compact, dimmed row (commodity, sell stop, profit, verdict, Details) and show the full layout again when expanded or marked as bought.
 19. Elevator caps (§6.3): a trade to or from a planetary outpost never uses boxes above 24 SCU; with "small hangar" on, the same holds for cities and for stations without a loading dock, while stations with a loading dock still allow 32; the toggle is preset from the ship's `pad_type` and can be overridden; trades that only work with bigger boxes are counted under `elevator`; the expanded line names the limiting stop. The same caps apply to the profitable-stops search (§6.7), which reuses haul generation.
 20. Sell limits: "Hide low stock & demand" also hides trades whose sell terminal reports low or no demand. In trip mode every not-yet-departed sell reminder has a muted, collapsed `Can't sell all?` action; expanded, it lists the other not-yet-departed route stops that buy the commodity with their sell price, and choosing one moves the reminder there (`moved from #n`), with a way back while the original stop is not departed.
@@ -833,6 +902,17 @@ interface BoughtLine {
     - **No UEX caching:** no UEX request is answered by the service worker, and the call counts of criterion 2 are unchanged.
     - **Updates:** after a new build the update banner appears, and `RELOAD` switches to the new version while ship, route and trip state are kept.
     - **Dev:** the dev server registers no service worker.
+22. Budget (§6.3, §7.3): with a budget set, no line's investment exceeds it. A trade whose full load costs more is listed with the quantity the budget buys, as long as at least one box fits. That quantity sets its profit and its rank, and the line has a `BUDGET` badge. A trade the budget can't buy a single box of is hidden and counted under `budget`. An empty budget changes nothing. The profitable-stops search uses the same capped trades.
+23. Four steps (§7.2–§7.4a):
+    - The tab bar reads `SHIP · ROUTE · EN ROUTE · TRADES`.
+    - SHIP has no trade filters. ROUTE has no suggestions and no profitable-stops settings.
+    - EN ROUTE shows the filters at the top and the route with suggestions at the bottom. Its filters change TRADES immediately.
+    - A persisted `trades` or `route` tab still opens the same view after the update.
+    - The profitable-stops search runs only while EN ROUTE is open.
+24. Safe loading (§6.8):
+    - With "Safe loading only" on, EN ROUTE never suggests a Pyro outpost or a Stanton outpost without an armistice zone, but still suggests stations in every system and Stanton outposts with an armistice zone.
+    - Route stops that fail the rule carry a `NO SAFE ZONE` badge in ROUTE, EN ROUTE and the TRADES stop header, whether the toggle is on or off.
+    - Fixed stops are never removed or filtered.
 
 ### 8.1 Required unit tests (minimum)
 
@@ -856,6 +936,24 @@ interface BoughtLine {
   - The install button is absent without `beforeinstallprompt`. After the event it shows and calls `prompt()`, and it disappears after the outcome and on `appinstalled`. It is absent in `display-mode: standalone` (mocked `matchMedia`).
   - The footer shows the build version.
 - Autocomplete ranking and tokenization cases from criterion 3 (use small fixture terminals).
+- Budget (§6.3):
+  - Without a budget, nothing changes.
+  - 46 SCU at 7,400/SCU with B = {8,16} and a budget of 250,000: affordable 33 SCU → `qtyMax` 32, investment 236,800, `budgetCap` set.
+  - A full load that fits the budget exactly gets no `budgetCap`.
+  - A budget below the smallest box's price drops the trade under `budget`.
+  - A capped trade can outrank a cheaper full load when its capped profit is higher.
+  - The cap combines with the elevator cap and the box range.
+  - `unusedScu` comes with the reason `budget`.
+- Safe loading (§6.8):
+  - Classification: station → safe; city → safe; outpost with armistice → safe; outpost without → unsafe; outpost id missing from E6 → unsafe.
+  - The mapper joins E2 `id_outpost` to E6.
+  - With `safeLoadingOnly` on, unsafe terminals are never candidates, including when they would be the best suggestion. With it off, they are candidates.
+  - Fixed stops are never affected.
+- Tabs (§7.2): the persisted tab migrates (`ship`, `route` and `trades` keep their view; an unknown value falls back to `ship`).
+- EN ROUTE (§7.4a):
+  - No search request while EN ROUTE is not visible; leaving it ignores the pending result.
+  - The old `enabled` setting is ignored after the migration.
+  - Add / Add all / ✕ work from the EN ROUTE list.
 
 Test fixtures: create small hand-written JSON fixtures in `src/__fixtures__/` shaped like §4.2 samples. Do **not** hit the live API in tests.
 
