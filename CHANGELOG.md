@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.0 - 2026-11-17
+
+### Features
+
+- Budget cap, EN ROUTE step and safe loading
+
 ## 1.4.1 - 2026-11-03
 
 ### Bug Fixes
