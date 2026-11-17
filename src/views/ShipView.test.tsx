@@ -142,30 +142,57 @@ describe('ShipView', () => {
     expect(useAppStore.getState()).toMatchObject({ boxMin: 16, boxMax: 16 })
   })
 
-  it('has the filter toggles (illegal on, volatile off, low stock off) and no demand filter', async () => {
-    const user = userEvent.setup()
+  it('has no trade filters any more: they moved to EN ROUTE (revision 18)', () => {
     render(<ShipView />)
-    expect(screen.getByRole('checkbox', { name: 'Include illegal commodities' })).toBeChecked()
-    expect(screen.getByRole('checkbox', { name: /quantum-volatile/ })).not.toBeChecked()
-    expect(screen.getByRole('checkbox', { name: 'Hide low stock & demand' })).not.toBeChecked()
+    expect(screen.queryByRole('region', { name: 'Filters' })).not.toBeInTheDocument()
     expect(
-      screen.getByText(
-        'Hides trades where the buy terminal reports low or no stock, or the sell terminal low or no demand — for stress-free hauling',
-      ),
-    ).toBeInTheDocument()
-    expect(screen.queryByText(/^No demand|^Hide low demand/i)).not.toBeInTheDocument() // one combined filter, no separate demand toggle
-    await user.click(screen.getByRole('checkbox', { name: 'Include illegal commodities' }))
-    await user.click(screen.getByRole('checkbox', { name: /quantum-volatile/ }))
-    await user.click(screen.getByRole('checkbox', { name: 'Hide low stock & demand' }))
-    expect(useAppStore.getState()).toMatchObject({
-      includeIllegal: false,
-      includeVolatileQt: true,
-      hideLowStock: true,
+      screen.queryByRole('checkbox', { name: /illegal|quantum-volatile|low stock/i }),
+    ).toBeNull()
+    expect(screen.queryByLabelText('Max price age')).not.toBeInTheDocument()
+  })
+
+  describe('budget (§7.3)', () => {
+    const field = () => screen.getByRole('textbox', { name: 'Budget (aUEC)' })
+
+    it('is empty with a "no limit" placeholder and an explaining hint, without a clear button', () => {
+      render(<ShipView />)
+      expect(field()).toHaveValue('')
+      expect(field()).toHaveAttribute('placeholder', 'no limit')
+      expect(
+        screen.getByText(
+          'Max aUEC for one load. More expensive trades are shown with the load you can afford.',
+        ),
+      ).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Clear budget' })).not.toBeInTheDocument()
     })
-    await user.selectOptions(screen.getByLabelText('Max price age'), '7')
-    expect(useAppStore.getState().maxPriceAgeDays).toBe(7)
-    await user.selectOptions(screen.getByLabelText('Max price age'), 'Any age')
-    expect(useAppStore.getState().maxPriceAgeDays).toBeNull()
+
+    it('groups the digits, stores whole aUEC and persists it', async () => {
+      const user = userEvent.setup()
+      render(<ShipView />)
+      await user.type(field(), '250000')
+      expect(field()).toHaveValue('250,000')
+      expect(useAppStore.getState().budget).toBe(250_000)
+      expect(JSON.parse(localStorage.getItem('shc:v1')!).state.budget).toBe(250_000)
+    })
+
+    it('ignores anything but digits and treats an emptied field as no limit', async () => {
+      const user = userEvent.setup()
+      render(<ShipView />)
+      await user.type(field(), '12a,5')
+      expect(field()).toHaveValue('125')
+      await user.clear(field())
+      expect(useAppStore.getState().budget).toBeNull()
+    })
+
+    it('clears with the ✕ button', async () => {
+      useAppStore.setState({ budget: 80_000 })
+      const user = userEvent.setup()
+      render(<ShipView />)
+      expect(field()).toHaveValue('80,000')
+      await user.click(screen.getByRole('button', { name: 'Clear budget' }))
+      expect(useAppStore.getState().budget).toBeNull()
+      expect(field()).toHaveValue('')
+    })
   })
 
   describe('small hangar toggle (§7.3)', () => {

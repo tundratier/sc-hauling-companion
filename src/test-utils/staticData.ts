@@ -1,11 +1,13 @@
 import { vi } from 'vitest'
 import commodities from '../__fixtures__/commodities.json'
 import gameVersions from '../__fixtures__/gameVersions.json'
+import outposts from '../__fixtures__/outposts.json'
 import pricesAll from '../__fixtures__/pricesAll.json'
 import terminals from '../__fixtures__/terminals.json'
 import vehicles from '../__fixtures__/vehicles.json'
 import type { Loaded, PriceData, StaticData } from '../api/dataStore'
 import {
+  mapArmisticeOutposts,
   mapCommodities,
   mapGameVersions,
   mapPrices,
@@ -19,7 +21,7 @@ export function fixtureStatic(fetchedAt = Date.now()): Loaded<StaticData> {
   const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
   const data: StaticData = {
     commodities: mapCommodities(commodities.data),
-    terminals: mapTerminals(terminals.data),
+    terminals: mapTerminals(terminals.data, mapArmisticeOutposts(outposts.data)),
     vehicles: mapVehicles(vehicles.data).filter((v) => v.scu > 0),
     gameVersions: mapGameVersions(gameVersions.data),
   }

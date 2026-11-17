@@ -1,6 +1,7 @@
 import { terminalDisplay } from '../domain/terminalDisplay'
 import type { Terminal } from '../domain/types'
 import { shortName } from '../lib/terminalNames'
+import { StopBadges } from './Badges'
 import type { SuggestResult, SuggestedStop } from '../route/suggest'
 
 interface SuggestedRowProps {
@@ -42,7 +43,7 @@ export function roleText(
   return parts.join(' · ')
 }
 
-/** A suggested stop inside the route list: dashed, no number, handle or reorder buttons. */
+/** A suggested stop inside the EN ROUTE list: dashed, no number, handle or reorder buttons. */
 export function SuggestedRow({ stop, result, byId, onAdd, onDismiss }: SuggestedRowProps) {
   const terminal = byId.get(stop.terminalId)
   const display = terminal ? terminalDisplay(terminal) : undefined
@@ -53,6 +54,7 @@ export function SuggestedRow({ stop, result, byId, onAdd, onDismiss }: Suggested
       <div className="stop__text">
         <div className="stop__primary">{name}</div>
         {display?.secondary && <div className="stop__secondary">{display.secondary}</div>}
+        <StopBadges safe={terminal?.safeLoading !== false} />
         <div className="stop__role">{roleText(stop, result, byId)}</div>
       </div>
       <div className="stop__actions">

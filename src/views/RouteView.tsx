@@ -1,16 +1,13 @@
 import { useCallback, useMemo, useRef, useState, type PointerEvent } from 'react'
 import { Combobox } from '../components/Combobox'
 import { DataGate } from '../components/DataGate'
-import { SuggestPanel } from '../components/SuggestPanel'
-import { SuggestedRow } from '../components/SuggestedRow'
+import { StopBadges } from '../components/Badges'
 import { searchTerminals } from '../domain/search'
 import { terminalDisplay } from '../domain/terminalDisplay'
 import type { Terminal } from '../domain/types'
-import { useSuggestions } from '../hooks/useSuggestions'
 import { indexAtY } from '../lib/drag'
 import { MAX_STOPS, MIN_STOPS, normalizeOrigins, useAppStore } from '../state/useAppStore'
 import { useDataStore } from '../state/useDataStore'
-import { useSuggestUi } from '../state/useSuggestUi'
 import { inProgress } from '../trip/tripReducer'
 
 interface StopRowProps {
@@ -39,11 +36,9 @@ function StopRow(p: StopRowProps) {
     >
       <span className="stop__index num">{p.index + 1}</span>
       <div className="stop__text">
-        <div className="stop__primary">
-          {name}
-          {p.dynamic && <span className="badge stop__badge">DYNAMIC</span>}
-        </div>
+        <div className="stop__primary">{name}</div>
         {display?.secondary && <div className="stop__secondary">{display.secondary}</div>}
+        <StopBadges dynamic={p.dynamic} safe={p.terminal?.safeLoading !== false} />
       </div>
       <div className="stop__actions">
         <button
@@ -94,9 +89,6 @@ function RouteEditor() {
   const { stops } = app
   const origins = normalizeOrigins(stops, app.origins)
   const trip = useAppStore((s) => s.trip)
-  const suggestion = useSuggestions()
-  const dismiss = useSuggestUi((s) => s.dismiss)
-  const suggested = suggestion.status === 'ready' ? suggestion.result : null
   const [confirmClear, setConfirmClear] = useState(false)
   const [drag, setDrag] = useState<{ from: number; over: number } | null>(null)
   const listRef = useRef<HTMLOListElement>(null)
@@ -148,7 +140,7 @@ function RouteEditor() {
         </p>
       ) : (
         <ol ref={listRef} className="stops" aria-label="Route stops">
-          {stops.flatMap((id, i) => [
+          {stops.map((id, i) => (
             <StopRow
               key={`${i}-${id}`}
               index={i}
@@ -164,21 +156,8 @@ function RouteEditor() {
               onDragStart={(e) => dragStart(i, e)}
               onDragMove={dragMove}
               onDragEnd={dragEnd}
-            />,
-            ...(suggested?.stops ?? [])
-              .filter((s) => s.insertAt === i + 1)
-              .sort((a, b) => a.routeIndex - b.routeIndex)
-              .map((s) => (
-                <SuggestedRow
-                  key={`suggested-${s.terminalId}`}
-                  stop={s}
-                  result={suggested!}
-                  byId={byId}
-                  onAdd={() => app.insertStop(s.insertAt, s.terminalId, 'dynamic')}
-                  onDismiss={() => dismiss(s.terminalId)}
-                />
-              )),
-          ])}
+            />
+          ))}
         </ol>
       )}
       <p className="muted num" aria-live="polite">
@@ -250,13 +229,6 @@ function RouteEditor() {
           </button>
         )}
       </div>
-
-      <SuggestPanel
-        state={suggestion}
-        fixedCount={origins.filter((o) => o === 'fixed').length}
-        dynamicCount={origins.filter((o) => o === 'dynamic').length}
-        onAddAll={(result) => app.replaceStops(result.route, result.origins)}
-      />
     </div>
   )
 }
@@ -275,9 +247,9 @@ export function RouteView() {
         <button
           type="button"
           className="btn btn--primary btn--block"
-          onClick={() => setTab('trades')}
+          onClick={() => setTab('enroute')}
         >
-          Calculate trades →
+          En route →
         </button>
       </div>
     </section>

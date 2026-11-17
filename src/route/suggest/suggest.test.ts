@@ -29,10 +29,11 @@ const calcBase: Omit<CalcInput, 'stops'> = {
   shipBoxSizes: null,
   boxRange: { min: 1, max: 32 },
   smallHangar: false,
+  budget: null,
   options: DEFAULT_CALC_OPTIONS,
 }
 
-const OPTS: SuggestOptions = { ...DEFAULT_SUGGEST_OPTIONS, enabled: true }
+const OPTS: SuggestOptions = { ...DEFAULT_SUGGEST_OPTIONS }
 
 interface Scenario {
   nodes: TestNode[]
@@ -592,8 +593,14 @@ describe('pairProfits', () => {
 describe('options', () => {
   it('clamps persisted options into their documented ranges', () => {
     expect(
-      normalizeSuggestOptions({ enabled: true, perGap: 9, total: 0, perGroup: 7, detourPct: 333 }),
-    ).toEqual({ enabled: true, perGap: 3, total: 1, perGroup: 3, detourPct: 300 })
+      normalizeSuggestOptions({
+        safeLoadingOnly: true,
+        perGap: 9,
+        total: 0,
+        perGroup: 7,
+        detourPct: 333,
+      }),
+    ).toEqual({ safeLoadingOnly: true, perGap: 3, total: 1, perGroup: 3, detourPct: 300 })
     expect(normalizeSuggestOptions({ detourPct: 94, perGap: -2 })).toMatchObject({
       detourPct: 100,
       perGap: 0,
@@ -869,5 +876,49 @@ describe('the inventory filter also covers sell-side demand in the search (revis
     expect(
       run({ ...args, calc: { options: { ...DEFAULT_CALC_OPTIONS, hideLowStock: true } } }).kind,
     ).toBe('none')
+  })
+})
+
+describe('safe loading only (§6.8)', () => {
+  const unsafeX = [terminal(1), terminal(2), terminal(3, { safeLoading: false })]
+  const base = { nodes: [A, X, B], terminals: unsafeX, offers: quartzXtoB, fixed: [1, 2] }
+
+  it('suggests an unsafe terminal when the option is off', () => {
+    expect(stopIds(run(base))).toEqual([3])
+  })
+
+  it('never suggests an unsafe terminal when the option is on, even as the best one', () => {
+    expect(run({ ...base, options: { safeLoadingOnly: true } }).kind).toBe('none')
+  })
+
+  it('still suggests a safe terminal when the option is on', () => {
+    const safe = [terminal(1), terminal(2), terminal(3)]
+    expect(stopIds(run({ ...base, terminals: safe, options: { safeLoadingOnly: true } }))).toEqual([
+      3,
+    ])
+  })
+
+  it('prefers the safe terminal over a better unsafe one when the option is on', () => {
+    const nodes: TestNode[] = [A, X, B, { id: 'station:Z', x: 60, terminals: [4] }]
+    const terminals = [terminal(1), terminal(2), terminal(3, { safeLoading: false }), terminal(4)]
+    const offers: Offers = [
+      buyOffer(1, 3, 100), // Quartz X → B: 500
+      sellOffer(1, 2, 150),
+      buyOffer(2, 4, 100), // Waste Z → B: 300
+      sellOffer(2, 2, 130),
+    ]
+    expect(stopIds(run({ nodes, terminals, offers, fixed: [1, 2] }))).toEqual([3])
+    expect(
+      stopIds(run({ nodes, terminals, offers, fixed: [1, 2], options: { safeLoadingOnly: true } })),
+    ).toEqual([4])
+  })
+
+  it('never affects fixed stops', () => {
+    // the fixed stop B is unsafe and stays the end of the route
+    const terminals = [terminal(1), terminal(2, { safeLoading: false }), terminal(3)]
+    const r = ok(
+      run({ ...base, terminals, options: { safeLoadingOnly: true }, offers: quartzXtoB }),
+    )
+    expect(r.route).toEqual([1, 3, 2])
   })
 })

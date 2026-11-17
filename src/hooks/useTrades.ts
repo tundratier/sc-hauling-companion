@@ -27,6 +27,7 @@ export function useCalcSettings(): { calc: Omit<CalcInput, 'stops'>; vehicle: Ve
   const includeVolatileQt = useAppStore((s) => s.includeVolatileQt)
   const maxPriceAgeDays = useAppStore((s) => s.maxPriceAgeDays)
   const smallHangar = useAppStore((s) => s.smallHangar)
+  const budget = useAppStore((s) => s.budget)
   const hideLowStock = useAppStore((s) => s.hideLowStock)
   const staticData = useDataStore((s) => s.staticData?.data)
 
@@ -41,6 +42,7 @@ export function useCalcSettings(): { calc: Omit<CalcInput, 'stops'>; vehicle: Ve
       shipBoxSizes: vehicle?.containerSizes ?? null,
       boxRange: { min: boxMin, max: boxMax },
       smallHangar,
+      budget,
       options: { includeIllegal, includeVolatileQt, maxPriceAgeDays, hideLowStock },
     }),
     [
@@ -49,6 +51,7 @@ export function useCalcSettings(): { calc: Omit<CalcInput, 'stops'>; vehicle: Ve
       boxMin,
       boxMax,
       smallHangar,
+      budget,
       includeIllegal,
       includeVolatileQt,
       maxPriceAgeDays,

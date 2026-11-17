@@ -118,6 +118,22 @@ function elevatorCapOf(
   return { size: ELEVATOR_MAX_BOX, stops, reasons }
 }
 
+/**
+ * Quantity to load (§6.3): the largest fillable amount in the free space, capped by the budget.
+ * `full` is the load without a budget (0 = nothing fits), `qty` the load the budget buys
+ * (0 = not even one box is affordable). Shared with the profitable-stops search.
+ */
+export function loadQuantity(
+  cap: number,
+  boxSizes: readonly number[],
+  unitBuy: number,
+  budget: number | null,
+): { full: number; qty: number } {
+  const full = maxFillable(cap, boxSizes)
+  if (budget === null || full === 0) return { full, qty: full }
+  return { full, qty: maxFillable(Math.min(cap, Math.floor(budget / unitBuy)), boxSizes) }
+}
+
 export function reportedInventory(buy: PriceOffer, sell: PriceOffer): ReportedInventory {
   return {
     buyStatus: buy.statusBuy > 0 ? buy.statusBuy : null,
@@ -152,6 +168,7 @@ export function generateCandidates(
     lowStock: 0,
     lowDemand: 0,
     elevator: 0,
+    budget: 0,
   }
   const hauls: Haul[] = []
   const cap = Math.floor(input.freeScu)
@@ -200,8 +217,13 @@ export function generateCandidates(
           dropped.elevator++
           continue
         }
-        const qtyMax = maxFillable(cap, boxSizes)
-        if (qtyMax === 0) {
+        const { full: fullQty, qty: qtyMax } = loadQuantity(
+          cap,
+          boxSizes,
+          buy.priceBuy,
+          input.budget,
+        )
+        if (fullQty === 0) {
           // Only sizes below the range minimum are on offer → "too small"; anything else
           // (nothing usable, above the maximum, or free space below the smallest box) → "too large".
           if (boxSizes.length === 0 && usable.length > 0 && Math.max(...usable) < minBox) {
@@ -209,6 +231,10 @@ export function generateCandidates(
           } else {
             dropped.boxTooLarge++
           }
+          continue
+        }
+        if (qtyMax === 0) {
+          dropped.budget++
           continue
         }
         const boxes = decomposeBoxes(qtyMax, boxSizes)
@@ -242,6 +268,7 @@ export function generateCandidates(
           boxSizes,
           qtyMax,
           unusedScu: cap - qtyMax,
+          budgetCap: qtyMax < fullQty ? { fullQty } : null,
           boxes,
           boxCount: boxes.reduce((n, b) => n + b.count, 0),
           investment,

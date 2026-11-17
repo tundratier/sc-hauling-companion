@@ -23,6 +23,7 @@ const calc: Omit<CalcInput, 'stops'> = {
   shipBoxSizes: null,
   boxRange: { min: 1, max: 32 },
   smallHangar: false,
+  budget: null,
   options: DEFAULT_CALC_OPTIONS,
 }
 const commodities = [1, 2, 3].map((id) => commodity(id))
@@ -76,7 +77,7 @@ function instance(seed: number): Instance {
     pool: Array.from({ length: nPool }, (_, i) => nFixed + i + 1),
     offers,
     options: {
-      enabled: true,
+      safeLoadingOnly: false,
       perGap,
       total: 1 + Math.floor(r() * 4),
       perGroup: 1 + Math.floor(r() * 2),

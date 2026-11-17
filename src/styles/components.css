@@ -1163,10 +1163,12 @@ select.input:disabled {
   align-self: flex-start;
 }
 
-/* Accepted dynamic stop: badge after the terminal name (SPEC §7.4) */
-.stop__badge {
-  margin-left: 8px;
-  vertical-align: 1px;
+/* DYNAMIC / NO SAFE ZONE chips of a route stop: their own row under the (clamped) secondary line */
+.stop__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 2px;
 }
 
 /* Worse skip line (SPEC §7.5): one compact, dimmed row — commodity, sell stop, profit, verdict.
@@ -1311,4 +1313,46 @@ select.input:disabled {
 
 .reminder__delta {
   color: var(--amber-dim);
+}
+
+/* Inline text button that links to another view (e.g. the filter summary → EN ROUTE) */
+.link {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--tap);
+  padding: 0 8px;
+  background: transparent;
+  border: 0;
+  color: var(--amber);
+  font: inherit;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.link:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: -2px;
+}
+
+.trades__filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+/* A budget-capped quantity names the full load too: it takes the whole details row */
+.field--wide {
+  grid-column: 1 / -1;
+}
+
+/* EN ROUTE route list: compact rows, no drag handle or reorder buttons (SPEC §7.4a) */
+.stop--compact {
+  min-height: 52px;
+}
+
+.stop--compact .stop__actions {
+  flex: none;
 }

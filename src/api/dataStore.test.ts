@@ -57,19 +57,29 @@ afterEach(() => {
 const advance = (ms: number) => vi.setSystemTime(Date.now() + ms)
 
 describe('cold start', () => {
-  it('performs 5 requests (E1–E3, E5 static + E4 prices) and caches mapped data', async () => {
+  it('performs 6 requests (E1–E3, E5, E6 static + E4 prices) and caches mapped data', async () => {
     const mock = installMockFetch()
     const staticData = await loadStaticData()
     const prices = await loadPrices({ gameVersion: staticData.gameVersion })
 
     expect(requestedPaths(mock).sort()).toEqual(
-      ['commodities', 'commodities_prices_all', 'game_versions', 'terminals', 'vehicles'].sort(),
+      [
+        'commodities',
+        'commodities_prices_all',
+        'game_versions',
+        'outposts',
+        'terminals',
+        'vehicles',
+      ].sort(),
     )
     expect(staticData.stale).toBe(false)
     expect(staticData.gameVersion).toBe('4.10.2')
     expect(staticData.data.gameVersions).toEqual({ live: '4.10.2', ptu: '4.10.3' })
     expect(staticData.data.commodities.length).toBeGreaterThan(0)
     expect(staticData.data.terminals).toHaveLength(8)
+    // E6 joined onto E2: the salvage yard has no armistice zone, the closed outpost has one
+    const safe = (id: number) => staticData.data.terminals.find((t) => t.id === id)?.safeLoading
+    expect([safe(10), safe(11), safe(13), safe(17)]).toEqual([true, true, false, true])
     // only vehicles with cargo capacity are stored
     expect(staticData.data.vehicles.every((v) => v.scu > 0)).toBe(true)
     expect(staticData.data.vehicles.some((v) => v.name === 'Gladius')).toBe(false)
@@ -82,11 +92,11 @@ describe('cold start', () => {
     const mock = installMockFetch()
     await loadStaticData()
     expect(requestedPaths(mock)).not.toContain('commodities_prices_all')
-    expect(mock).toHaveBeenCalledTimes(4)
+    expect(mock).toHaveBeenCalledTimes(5)
   })
 })
 
-describe('static cache schema (terminals gained idSpaceStation / idCity)', () => {
+describe('static cache schema (terminals gained idSpaceStation / idCity, then safeLoading)', () => {
   const oldEntry = (schemaVersion: number) => ({
     key: STATIC_KEY,
     schemaVersion,
@@ -101,11 +111,12 @@ describe('static cache schema (terminals gained idSpaceStation / idCity)', () =>
   })
 
   it('refetches static data cached in the old shape, once', async () => {
-    idb.store.set(STATIC_KEY, oldEntry(1))
+    // the old key (static:v2) is simply not read any more; an entry of an older shape under the key is refetched
+    idb.store.set(STATIC_KEY, oldEntry(2))
     const mock = installMockFetch()
     const loaded = await loadStaticData()
-    expect(mock).toHaveBeenCalledTimes(4)
-    expect(loaded.data.terminals[0]).toHaveProperty('idSpaceStation')
+    expect(mock).toHaveBeenCalledTimes(5)
+    expect(loaded.data.terminals[0]).toHaveProperty('safeLoading')
     // the next load is served from the new entry
     const again = installMockFetch()
     await loadStaticData()
@@ -113,7 +124,7 @@ describe('static cache schema (terminals gained idSpaceStation / idCity)', () =>
   })
 
   it('keeps using static data cached in the current shape, and never refetches prices for it', async () => {
-    idb.store.set(STATIC_KEY, oldEntry(2))
+    idb.store.set(STATIC_KEY, oldEntry(3))
     const mock = installMockFetch()
     await loadStaticData()
     expect(mock).not.toHaveBeenCalled()
@@ -125,7 +136,7 @@ describe('warm start within TTL', () => {
     const first = installMockFetch()
     const s = await loadStaticData()
     await loadPrices({ gameVersion: s.gameVersion })
-    expect(first).toHaveBeenCalledTimes(5)
+    expect(first).toHaveBeenCalledTimes(6)
 
     advance(20 * MIN)
     const second = installMockFetch()
@@ -136,7 +147,7 @@ describe('warm start within TTL', () => {
     expect(p2.stale).toBe(false)
   })
 
-  it('static data stays fresh for 24 h and is then refetched (4 requests)', async () => {
+  it('static data stays fresh for 24 h and is then refetched (5 requests)', async () => {
     installMockFetch()
     await loadStaticData()
     advance(STATIC_TTL_MS - MIN)
@@ -149,7 +160,7 @@ describe('warm start within TTL', () => {
     const loaded = await loadStaticData({ onBackground })
     expect(loaded.stale).toBe(true)
     await vi.waitFor(() => expect(onBackground).toHaveBeenCalled())
-    expect(mock).toHaveBeenCalledTimes(4)
+    expect(mock).toHaveBeenCalledTimes(5)
   })
 })
 
@@ -247,7 +258,7 @@ describe('manual refresh', () => {
     await loadStaticData()
     const mock = installMockFetch()
     await loadStaticData({ force: true })
-    expect(mock).toHaveBeenCalledTimes(4)
+    expect(mock).toHaveBeenCalledTimes(5)
   })
 
   it('computes the remaining cooldown', () => {
@@ -306,7 +317,7 @@ describe('works without IndexedDB', () => {
     const mock = installMockFetch()
     await loadStaticData()
     await loadStaticData()
-    expect(mock).toHaveBeenCalledTimes(4)
+    expect(mock).toHaveBeenCalledTimes(5)
   })
 })
 

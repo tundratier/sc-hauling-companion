@@ -42,6 +42,8 @@ export interface CalcInput {
   boxRange: BoxRange
   /** The ship lands in a small (S) hangar: hangar elevators take ≤ 24 SCU boxes (§6.3). */
   smallHangar: boolean
+  /** aUEC the player can spend on one load; null = no limit (§6.3). */
+  budget: number | null
   options: CalcOptions
 }
 
@@ -129,8 +131,10 @@ export interface Haul {
   boxSizes: number[]
   /** Largest fillable quantity ≤ free SCU. */
   qtyMax: number
-  /** Free SCU that cannot be filled with the allowed boxes (cap − qtyMax). */
+  /** Free SCU that cannot be filled with the allowed boxes or the budget (cap − qtyMax). */
   unusedScu: number
+  /** Set when the budget capped the quantity: the load the free space would allow (§6.3). */
+  budgetCap: { fullQty: number } | null
   boxes: BoxCount[]
   /** Total number of boxes in the breakdown. */
   boxCount: number
@@ -163,6 +167,8 @@ export interface DroppedCounts {
   lowDemand: number
   /** Only sizes above the cargo elevator limit are on offer. */
   elevator: number
+  /** The budget doesn't buy even one of the smallest allowed boxes. */
+  budget: number
 }
 
 export interface CalcResult {
@@ -185,5 +191,6 @@ export const EMPTY_RESULT: CalcResult = {
     lowStock: 0,
     lowDemand: 0,
     elevator: 0,
+    budget: 0,
   },
 }

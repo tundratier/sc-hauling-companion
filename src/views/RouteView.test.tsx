@@ -226,11 +226,37 @@ describe('RouteView stop list', () => {
   })
 })
 
-describe('RouteView calculate button', () => {
-  it('switches to the TRADES view', async () => {
+describe('RouteView next step', () => {
+  it('has a sticky EN ROUTE button to the EN ROUTE view', async () => {
     const user = userEvent.setup()
     render(<RouteView />)
-    await user.click(screen.getByRole('button', { name: /Calculate trades/ }))
-    expect(useAppStore.getState().tab).toBe('trades')
+    await user.click(screen.getByRole('button', { name: /En route/ }))
+    expect(useAppStore.getState().tab).toBe('enroute')
+  })
+})
+
+describe('RouteView no longer suggests stops (revision 18)', () => {
+  it('has no profitable-stops section, toggle or settings', () => {
+    useAppStore.setState({ stops: [10, 11] })
+    render(<RouteView />)
+    expect(screen.queryByRole('region', { name: 'Add profitable stops' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('checkbox', { name: /profitable stops/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Settings' })).not.toBeInTheDocument()
+    expect(document.querySelector('.stop--suggested')).toBeNull()
+  })
+})
+
+describe('RouteView badges', () => {
+  it('marks stops without safe loading with NO SAFE ZONE next to DYNAMIC, under the secondary line', () => {
+    // 13 is the salvage yard (outpost without an armistice zone), 10 a station, 11 a city
+    useAppStore.setState({ stops: [10, 13, 11], origins: ['fixed', 'dynamic', 'fixed'] })
+    render(<RouteView />)
+    const items = within(screen.getByRole('list', { name: 'Route stops' })).getAllByRole('listitem')
+    expect(items[0]).not.toHaveTextContent('NO SAFE ZONE')
+    expect(items[1]).toHaveTextContent('DYNAMIC')
+    expect(items[1]).toHaveTextContent('NO SAFE ZONE')
+    // the badges sit under the secondary line (which clamps long text), in their own row
+    expect(items[1].querySelector('.stop__badges')).toHaveTextContent('DYNAMICNO SAFE ZONE')
+    expect(items[2]).not.toHaveTextContent('NO SAFE ZONE')
   })
 })
